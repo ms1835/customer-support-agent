@@ -1,7 +1,7 @@
 from enum import Enum
 
 from sqlalchemy import Column, Enum as SqlAlchemyEnum, Integer, String
-from database import Base
+from app.db.database import Base
 
 
 class OrderStatus(str, Enum):
