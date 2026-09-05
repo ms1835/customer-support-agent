@@ -19,3 +19,8 @@ class OrderCreateRequest(BaseModel):
     user_id: int
     total_amount: Decimal
     currency: str = "INR"
+
+
+class CancelOrderRequest(BaseModel):
+    order_id: int
+    reason: str | None = None

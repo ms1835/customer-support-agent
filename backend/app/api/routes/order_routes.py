@@ -18,6 +18,40 @@ def get_order(
         raise HTTPException(status_code=404, detail="Order not found")
     return order
 
+@router.get("/{order_id}/shipment", response_model=ShipmentResponse)
+def get_order_shipment(
+    order_id: int,
+    db: Session = Depends(get_db)
+):
+    response = shipment_service.get_shipment_by_order_id(db, order_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    return response
+
+
+@router.post("/{order_id}/cancel", response_model=OrderResponse)
+def cancel_order(
+    order_id: int,
+    request: CancelOrderRequest,
+    db: Session = Depends(get_db),
+):
+    response = order_service.cancel_order(db, order_id, request.reason)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return response
+
+@router.post("/{order_id}/refund", response_model=RefundResponse, status_code=201)
+def refund_order(
+    order_id: int,
+    request: RefundCreateRequest,
+    db: Session = Depends(get_db),
+):
+    response = refund_service.create_refund(db, order_id, request)
+
+    if response is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return response
+
 @router.post("/", response_model=OrderResponse, status_code=201)
 def create_new_order(
     order_data: OrderCreateRequest,

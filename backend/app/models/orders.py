@@ -1,6 +1,6 @@
 from enum import Enum
 
-from sqlalchemy import Column, Enum as SqlAlchemyEnum, Integer, String
+from sqlalchemy import Column, Enum as SqlAlchemyEnum, Integer, String, ForeignKey, Numeric
 from app.db.database import Base
 
 
@@ -17,9 +17,9 @@ class OrderStatus(str, Enum):
 class Order(Base):
     __tablename__ = "orders"
 
-    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, primary_key=True, index=True)
     order_number = Column(Integer, index=True)
-    user_id = Column(Integer, foreign_key="users.id", index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     status = Column(
         SqlAlchemyEnum(
             OrderStatus,
@@ -31,7 +31,7 @@ class Order(Base):
         nullable=False,
         default=OrderStatus.PENDING,
     )
-    total_amount = Column(Integer, index=True)
+    total_amount = Column(Numeric(precision=10, scale=2), index=True)
     currency = Column(String, index=True)
     created_at = Column(String, index=True)
     updated_at = Column(String, index=True)
