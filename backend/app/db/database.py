@@ -1,11 +1,15 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+import os
+from dotenv import load_dotenv
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+load_dotenv()  
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+DATABASE_URL = os.environ["DATABASE_URL"]
 
-SessionLocal = sessionmaker(autocommit=False, autoFlush=False, bind=engine)
+engine = create_engine(DATABASE_URL)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
     pass
