@@ -1,26 +1,14 @@
-from app.services.order_service import get_order_by_id
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.schemas.order_schema import OrderResponse, OrderCreateRequest, CancelOrderRequest
+from app.services import order_service, refund_service, shipment_service
 from app.services.order_service import create_order, get_order_by_id
 from app.db.database import get_db
 from app.schemas.shipment_schema import ShipmentResponse
-# from app.services.shipment_service import shipment_service
 from app.schemas.refund_schema import RefundResponse, RefundCreateRequest
-# from app.services.refund_service import refund_service
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
-
-@router.get("/{order_id}", response_model=OrderResponse)
-def get_order(
-    order_id: int,
-    db: Session = Depends(get_db),
-):
-    order = get_order_by_id(db, order_id)
-    if order is None:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
 
 @router.get("/{order_id}/shipment", response_model=ShipmentResponse)
 def get_order_shipment(
@@ -39,7 +27,10 @@ def cancel_order(
     request: CancelOrderRequest,
     db: Session = Depends(get_db),
 ):
-    response = order_service.cancel_order(db, order_id, request.reason)
+    try:
+        response = order_service.cancel_order(db, order_id, request.reason)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     if response is None:
         raise HTTPException(status_code=404, detail="Order not found")
     return response
@@ -50,7 +41,10 @@ def refund_order(
     request: RefundCreateRequest,
     db: Session = Depends(get_db),
 ):
-    response = refund_service.create_refund(db, order_id, request)
+    try:
+        response = refund_service.create_refund(db, order_id, request)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
     if response is None:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -61,5 +55,19 @@ def create_new_order(
     order_data: OrderCreateRequest,
     db: Session = Depends(get_db),
 ):
-    order = create_order(db, order_data)
+    try:
+        order = create_order(db, order_data)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return order
+
+
+@router.get("/{order_id}", response_model=OrderResponse)
+def get_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = get_order_by_id(db, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
     return order

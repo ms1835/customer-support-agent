@@ -1,4 +1,5 @@
 from app.models.shipments import Shipment
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 def get_shipment_by_order_id(db: Session, order_id: int) -> Shipment | None:

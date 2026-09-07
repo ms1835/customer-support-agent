@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String , Enum as SqlAlchemyEnum, ForeignKey
-from databse import Base
+from app.db.database import Base
 from enum import Enum
+from sqlalchemy.orm import relationship
 
 class MessageRole(str, Enum):
     USER = "user"
@@ -12,7 +13,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    conversation_id = Column(Integer, ForeignKey("conversations.id"), index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     role = Column(
         SqlAlchemyEnum(
             MessageRole,
@@ -23,5 +24,7 @@ class Message(Base):
         index=True,
         nullable=False
     )
-    content = Column(String, index=True)
+    content = Column(String, nullable=False, index=True)
     created_at = Column(String, index=True)
+
+    conversation = relationship("Conversation", back_populates="messages")

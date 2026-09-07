@@ -1,6 +1,7 @@
 from enum import Enum
 
 from sqlalchemy import Column, Enum as SqlAlchemyEnum, Integer, String, ForeignKey, Numeric
+from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 
@@ -17,9 +18,9 @@ class OrderStatus(str, Enum):
 class Order(Base):
     __tablename__ = "orders"
 
-    order_id = Column(Integer, primary_key=True, index=True)
-    order_number = Column(Integer, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    id = Column(Integer, primary_key=True, index=True)
+    order_number = Column(Integer, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     status = Column(
         SqlAlchemyEnum(
             OrderStatus,
@@ -31,7 +32,14 @@ class Order(Base):
         nullable=False,
         default=OrderStatus.PENDING,
     )
-    total_amount = Column(Numeric(precision=10, scale=2), index=True)
-    currency = Column(String, index=True)
+    total_amount = Column(Numeric(precision=10, scale=2), nullable=False, index=True)
+    currency = Column(String(3), nullable=False, index=True)
     created_at = Column(String, index=True)
     updated_at = Column(String, index=True)
+
+    user = relationship("User", back_populates="orders")
+    items = relationship(
+        "OrderItem",
+        back_populates="order",
+        cascade="all, delete-orphan",
+    )
