@@ -1,19 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_conversation_service
 from app.db.database import get_db
 from app.schemas.conversation_schema import ConversationCreateRequest, ConversationResponse
 from app.schemas.message_schema import MessageCreateRequest, MessageResponse
-from app.services import conversation_service
+from app.services.conversation_service import ConversationService
 
 router = APIRouter(prefix="/api/conversations", tags=["Conversations"])
 
 @router.get("/{conversation_id}", response_model=ConversationResponse)
 def get_conversation(
     conversation_id: int,
-    db: Session = Depends(get_db)
+    service: ConversationService = Depends(get_conversation_service),
 ):
-    conversation = conversation_service.get_conversation_by_id(db, conversation_id)
+    conversation = service.get_conversation_by_id(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
@@ -22,10 +22,10 @@ def get_conversation(
 @router.post("", response_model=ConversationResponse, status_code=201)
 def create_new_conversation(
     conversation_data: ConversationCreateRequest,
-    db: Session = Depends(get_db),
+    service: ConversationService = Depends(get_conversation_service),
 ):
     try:
-        return conversation_service.create_conversation(db, conversation_data)
+        return service.create_conversation(conversation_data)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -38,10 +38,9 @@ def create_new_conversation(
 def create_message(
     conversation_id: int,
     message_data: MessageCreateRequest,
-    db: Session = Depends(get_db),
+    service: ConversationService = Depends(get_conversation_service),
 ):
-    message = conversation_service.add_message(
-        db,
+    message = service.add_message(
         conversation_id,
         message_data,
     )

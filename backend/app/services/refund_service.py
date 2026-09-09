@@ -8,22 +8,21 @@ from app.models.refunds import Refund
 from app.schemas.refund_schema import RefundCreateRequest
 
 class RefundService:
-    def __init__(self):
-        pass
+    def __init__(self, db: Session):
+        self.db = db
 
     def create_refund(
         self,
-        db: Session,
         order_id: int,
         refund_data: RefundCreateRequest,
     ) -> Refund | None:
-        order = db.scalar(select(Order).where(Order.id == order_id))
+        order = self.db.scalar(select(Order).where(Order.id == order_id))
         if order is None:
             return None
         if order.status in {"cancelled", "refunded"}:
             raise ValueError("Cancelled or already refunded orders cannot be refunded")
 
-        refunded_amount = db.scalar(
+        refunded_amount = self.db.scalar(
             select(func.coalesce(func.sum(Refund.amount), 0)).where(
                 Refund.order_id == order_id,
                 Refund.status.in_(["pending", "processed"]),
@@ -39,10 +38,10 @@ class RefundService:
             status="pending",
         )
         try:
-            db.add(refund)
-            db.commit()
-            db.refresh(refund)
+            self.db.add(refund)
+            self.db.commit()
+            self.db.refresh(refund)
             return refund
         except Exception:
-            db.rollback()
+            self.db.rollback()
             raise

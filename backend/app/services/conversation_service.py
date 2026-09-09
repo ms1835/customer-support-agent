@@ -8,16 +8,16 @@ from sqlalchemy.orm import Session
 
 class ConversationService:
 
-    def __init__(self):
-        pass
+    def __init__(self, db: Session):
+        self.db = db
 
-    def get_conversation_by_id(self, db: Session, conversation_id: int) -> Conversation | None:
+    def get_conversation_by_id(self, conversation_id: int) -> Conversation | None:
         query = select(Conversation).where(Conversation.id == conversation_id)
-        return db.scalar(query)
+        return self.db.scalar(query)
 
 
-    def create_conversation(self, db: Session, conversation_data: ConversationCreateRequest) -> Conversation:
-        if db.get(User, conversation_data.user_id) is None:
+    def create_conversation(self, conversation_data: ConversationCreateRequest) -> Conversation:
+        if self.db.get(User, conversation_data.user_id) is None:
             raise ValueError("User does not exist")
 
         conversation = Conversation(
@@ -25,17 +25,16 @@ class ConversationService:
             status=conversation_data.status,
         )
         try:
-            db.add(conversation)
-            db.commit()
-            db.refresh(conversation)
+            self.db.add(conversation)
+            self.db.commit()
+            self.db.refresh(conversation)
             return conversation
         except Exception:
-            db.rollback()
+            self.db.rollback()
             raise
 
-
-    def add_message(self, db: Session, conversation_id: int, message_data: MessageCreateRequest) -> Message | None:
-        if db.get(Conversation, conversation_id) is None:
+    def add_message(self, conversation_id: int, message_data: MessageCreateRequest) -> Message | None:
+        if self.db.get(Conversation, conversation_id) is None:
             return None
 
         message = Message(
@@ -44,10 +43,10 @@ class ConversationService:
             content=message_data.content,
         )
         try:
-            db.add(message)
-            db.commit()
-            db.refresh(message)
+            self.db.add(message)
+            self.db.commit()
+            self.db.refresh(message)
             return message
         except Exception:
-            db.rollback()
+            self.db.rollback()
             raise

@@ -11,22 +11,22 @@ from app.schemas.order_schema import OrderCreateRequest
 
 class OrderService:
 
-    def __init__(self):
-        pass
+    def __init__(self, db: Session):
+        self.db = db
 
-    def get_order_by_id(self, db: Session, order_id: int) -> Order | None:
+    def get_order_by_id(self, order_id: int) -> Order | None:
         query = select(Order).where(Order.id == order_id)
-        return db.scalar(query)
+        return self.db.scalar(query)
 
-    def create_order(self, db: Session, order_data: OrderCreateRequest) -> Order:
-        if db.scalar(select(User).where(User.id == order_data.user_id)) is None:
+    def create_order(self, order_data: OrderCreateRequest) -> Order:
+        if self.db.scalar(select(User).where(User.id == order_data.user_id)) is None:
             raise ValueError("User does not exist")
 
         product_ids = [item.product_id for item in order_data.items]
         if len(product_ids) != len(set(product_ids)):
             raise ValueError("Each product may appear only once in an order")
 
-        products = db.scalars(
+        products = self.db.scalars(
             select(Product)
             .where(Product.id.in_(product_ids), Product.is_active.is_(True))
             .with_for_update()
@@ -59,32 +59,31 @@ class OrderService:
         ]
 
         try:
-            db.add(order)
-            db.flush()
+            self.db.add(order)
+            self.db.flush()
             order.order_number = order.id
-            db.commit()
-            db.refresh(order)
+            self.db.commit()
+            self.db.refresh(order)
             return order
         except Exception:
-            db.rollback()
+            self.db.rollback()
             raise
-
 
     def cancel_order(
         self,
-        db: Session,
         order_id: int,
         reason: str | None = None,
     ) -> Order | None:
-        order = db.get(Order, order_id)
+        order = self.db.get(Order, order_id)
         if order is None:
             return None
         if order.status in {OrderStatus.CANCELLED, OrderStatus.REFUNDED}:
             raise ValueError("Order cannot be cancelled in its current state")
 
         order.status = OrderStatus.CANCELLED
-        db.commit()
-        db.refresh(order)
+        self.db.commit()
+        self.db.refresh(order)
         return order
+
 
     

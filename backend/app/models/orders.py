@@ -19,7 +19,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    order_number = Column(Integer, unique=True, nullable=False, index=True)
+    order_number = Column(Integer, unique=True, nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     status = Column(
         SqlAlchemyEnum(
