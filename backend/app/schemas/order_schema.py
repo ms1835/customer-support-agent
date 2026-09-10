@@ -24,16 +24,12 @@ class OrderItemResponse(BaseModel):
     product_id: int
     quantity: int
     unit_price: Decimal
-    currency: str
-    created_at: str | None = None
-    updated_at: str | None = None
 
 
 class OrderCreateRequest(BaseModel):
-    user_id: int
+    user_id: int = Field(gt=0)
     items: list[OrderItemCreateRequest] = Field(min_length=1)
-    currency: str = "INR"
 
 
 class CancelOrderRequest(BaseModel):
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=500)

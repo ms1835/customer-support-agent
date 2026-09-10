@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.models.users import User
 from app.schemas.user_schema import UserCreateRequest
 from sqlalchemy import select
@@ -21,6 +23,7 @@ class UserService:
         user = User(
             name=user_data.name,
             email=user_data.email,
+            created_at=datetime.now(timezone.utc),
         )
         try:
             self.db.add(user)

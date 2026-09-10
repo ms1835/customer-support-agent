@@ -1,4 +1,4 @@
-from app.models.conversations import Conversation
+from app.models.conversations import Conversation, ConversationStatus
 from app.models.messages import Message
 from app.models.users import User
 from app.schemas.conversation_schema import ConversationCreateRequest
@@ -22,7 +22,7 @@ class ConversationService:
 
         conversation = Conversation(
             user_id=conversation_data.user_id,
-            status=conversation_data.status,
+            status=ConversationStatus.OPEN,
         )
         try:
             self.db.add(conversation)

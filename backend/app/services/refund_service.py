@@ -3,8 +3,8 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.orders import Order
-from app.models.refunds import Refund
+from app.models.orders import Order, OrderStatus
+from app.models.refunds import Refund, RefundStatus
 from app.schemas.refund_schema import RefundCreateRequest
 
 class RefundService:
@@ -19,13 +19,13 @@ class RefundService:
         order = self.db.scalar(select(Order).where(Order.id == order_id))
         if order is None:
             return None
-        if order.status in {"cancelled", "refunded"}:
+        if order.status in {OrderStatus.CANCELLED, OrderStatus.REFUNDED}:
             raise ValueError("Cancelled or already refunded orders cannot be refunded")
 
         refunded_amount = self.db.scalar(
             select(func.coalesce(func.sum(Refund.amount), 0)).where(
                 Refund.order_id == order_id,
-                Refund.status.in_(["pending", "processed"]),
+                Refund.status.in_([RefundStatus.PENDING, RefundStatus.PROCESSED]),
             )
         )
         if Decimal(str(refunded_amount)) + refund_data.amount > order.total_amount:
@@ -35,7 +35,7 @@ class RefundService:
             order_id=order_id,
             amount=refund_data.amount,
             reason=refund_data.reason,
-            status="pending",
+            status=RefundStatus.PENDING,
         )
         try:
             self.db.add(refund)

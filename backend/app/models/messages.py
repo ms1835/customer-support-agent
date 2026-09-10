@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String , Enum as SqlAlchemyEnum, ForeignKey
+from sqlalchemy import Column, DateTime, Enum as SqlAlchemyEnum, ForeignKey, Integer, String, func
 from app.db.database import Base
 from enum import Enum
 from sqlalchemy.orm import relationship
@@ -25,6 +25,6 @@ class Message(Base):
         nullable=False
     )
     content = Column(String, nullable=False, index=True)
-    created_at = Column(String, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
 
     conversation = relationship("Conversation", back_populates="messages")

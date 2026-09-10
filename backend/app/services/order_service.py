@@ -36,9 +36,6 @@ class OrderService:
         if missing_ids:
             raise ValueError(f"Active product(s) not found: {sorted(missing_ids)}")
 
-        if any(product.currency != order_data.currency for product in products):
-            raise ValueError("All products must use the order currency")
-
         total_amount = sum(
             (products_by_id[item.product_id].price * item.quantity for item in order_data.items),
             Decimal("0.00"),
@@ -47,7 +44,6 @@ class OrderService:
             user_id=order_data.user_id,
             status=OrderStatus.PENDING,
             total_amount=total_amount,
-            currency=order_data.currency,
         )
         order.items = [
             OrderItem(

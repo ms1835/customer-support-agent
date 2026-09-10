@@ -1,6 +1,6 @@
 from enum import Enum
 
-from sqlalchemy import Column, Enum as SqlAlchemyEnum, Integer, String, ForeignKey, Numeric
+from sqlalchemy import Column, DateTime, Enum as SqlAlchemyEnum, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -19,7 +19,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    order_number = Column(Integer, unique=True, nullable=True, index=True)
+    order_number = Column(Integer, unique=True, nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     status = Column(
         SqlAlchemyEnum(
@@ -33,9 +33,14 @@ class Order(Base):
         default=OrderStatus.PENDING,
     )
     total_amount = Column(Numeric(precision=10, scale=2), nullable=False, index=True)
-    currency = Column(String(3), nullable=False, index=True)
-    created_at = Column(String, index=True)
-    updated_at = Column(String, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        index=True,
+    )
 
     user = relationship("User", back_populates="orders")
     items = relationship(
@@ -43,3 +48,4 @@ class Order(Base):
         back_populates="order",
         cascade="all, delete-orphan",
     )
+    refunds = relationship("Refund", back_populates="order")

@@ -11,7 +11,6 @@ class Product(Base):
     sku = Column(String(100), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
     price = Column(Numeric(precision=10, scale=2), nullable=False)
-    currency = Column(String(3), nullable=False, default="INR")
     is_active = Column(Boolean, nullable=False, default=True, index=True)
 
     order_items = relationship("OrderItem", back_populates="product")

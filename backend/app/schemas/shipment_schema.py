@@ -1,11 +1,13 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
+from app.models.shipments import ShipmentStatus
 
 
 class ShipmentCreateRequest(BaseModel):
-    tracking_number: str
+    tracking_number: str | None = None
     carrier: str
-    status: str = "pending"
-    estimated_delivery: str | None = None
+    estimated_delivery: datetime | None = None
 
 
 class ShipmentResponse(BaseModel):
@@ -14,6 +16,6 @@ class ShipmentResponse(BaseModel):
     order_id: int
     tracking_number: str
     carrier: str
-    status: str
-    estimated_delivery: str | None = None
-    actual_delivery: str | None = None
+    status: ShipmentStatus
+    estimated_delivery: datetime | None = None
+    actual_delivery: datetime | None = None
