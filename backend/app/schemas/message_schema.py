@@ -18,3 +18,6 @@ class MessageResponse(BaseModel):
     role: MessageRole
     content: str
     created_at: datetime
+
+class ChatRequest(BaseModel):
+    content: str = Field(min_length=1)

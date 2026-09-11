@@ -50,3 +50,37 @@ class ConversationService:
         except Exception:
             self.db.rollback()
             raise
+
+    def chat(self, conversation_id: int, content: str) -> Message | None:
+        if self.db.get(Conversation, conversation_id) is None:
+            return None
+
+        user_message = Message(
+            conversation_id=conversation_id,
+            role=MESSAGE_ROLE_USER,
+            content=content,
+        )
+        try:
+            self.db.add(user_message)
+            self.db.commit()
+            self.db.refresh(user_message)
+
+            assistant_text = LLM.invoke({
+                "conversation_id": conversation_id,
+                "message": content,
+            })
+
+            assistant_message = Message(
+                conversation_id=conversation_id,
+                role=MESSAGE_ROLE_ASSISTANT,
+                content=assistant_text,
+            )
+
+            self.db.add(assistant_message)
+            self.db.commit()
+            self.db.refresh(assistant_message)
+            
+            return user_message
+        except Exception:
+            self.db.rollback()
+            raise

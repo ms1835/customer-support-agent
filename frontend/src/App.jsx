@@ -35,7 +35,7 @@ export default function App() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/conversations/${conversationId}/messages`,
+        `${API_URL}/api/conversations/${conversationId}/chat`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

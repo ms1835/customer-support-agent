@@ -48,3 +48,21 @@ def create_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
     return message
 
+
+@router.post(
+    "/{conversation_id}/chat",
+    response_model=MessageResponse,
+    status_code=201,
+)
+def chat(
+    conversation_id: int,
+    request: ChatRequest,
+    service: ConversationService = Depends(get_conversation_service),
+):
+    message = service.chat(
+        conversation_id,
+        request.content,
+    )
+    if message is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return message
