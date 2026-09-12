@@ -5,7 +5,7 @@ from app.schemas.conversation_schema import ConversationCreateRequest
 from app.schemas.message_schema import MessageCreateRequest
 from app.services.llm_service import generate_reply
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from datetime import datetime, timezone
 
 class ConversationService:
@@ -16,6 +16,15 @@ class ConversationService:
     def get_conversation_by_id(self, conversation_id: int) -> Conversation | None:
         query = select(Conversation).where(Conversation.id == conversation_id)
         return self.db.scalar(query)
+
+    def list_conversations(self, user_id: int) -> list[Conversation]:
+        query = (
+            select(Conversation)
+            .where(Conversation.user_id == user_id)
+            .options(selectinload(Conversation.messages))
+            .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+        )
+        return list(self.db.scalars(query).all())
 
 
     def create_conversation(self, conversation_data: ConversationCreateRequest) -> Conversation:
@@ -64,6 +73,7 @@ class ConversationService:
                 created_at=datetime.now(timezone.utc),
             )
             self.db.add(assistant_message)
+            conversation.updated_at = datetime.now(timezone.utc)
             self.db.commit()
             self.db.refresh(assistant_message)
             return assistant_message

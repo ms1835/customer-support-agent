@@ -18,6 +18,14 @@ def get_conversation(
     return conversation
 
 
+@router.get("", response_model=list[ConversationResponse])
+def list_conversations(
+    user_id: int,
+    service: ConversationService = Depends(get_conversation_service),
+):
+    return service.list_conversations(user_id)
+
+
 @router.post("", response_model=ConversationResponse, status_code=201)
 def create_new_conversation(
     conversation_data: ConversationCreateRequest,
