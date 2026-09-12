@@ -1,10 +1,12 @@
 from app.models.conversations import Conversation, ConversationStatus
-from app.models.messages import Message
+from app.models.messages import MessageRole
 from app.models.users import User
 from app.schemas.conversation_schema import ConversationCreateRequest
-from app.schemas.message_schema import MessageCreateRequest
+from app.schemas.message_schema import ChatResponse, MessageCreateRequest
+from app.services.llm_service import generate_reply
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 class ConversationService:
 
@@ -23,6 +25,8 @@ class ConversationService:
         conversation = Conversation(
             user_id=conversation_data.user_id,
             status=ConversationStatus.OPEN,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         try:
             self.db.add(conversation)
@@ -33,54 +37,12 @@ class ConversationService:
             self.db.rollback()
             raise
 
-    def add_message(self, conversation_id: int, message_data: MessageCreateRequest) -> Message | None:
-        if self.db.get(Conversation, conversation_id) is None:
-            return None
+    def add_message(
+        self,
+        conversation_id: int,
+        message_data: MessageCreateRequest,
+    ) -> ChatResponse | None:
+        if message_data.role != MessageRole.USER:
+            raise ValueError("Only user messages can be sent to the assistant")
 
-        message = Message(
-            conversation_id=conversation_id,
-            role=message_data.role,
-            content=message_data.content,
-        )
-        try:
-            self.db.add(message)
-            self.db.commit()
-            self.db.refresh(message)
-            return message
-        except Exception:
-            self.db.rollback()
-            raise
-
-    def chat(self, conversation_id: int, content: str) -> Message | None:
-        if self.db.get(Conversation, conversation_id) is None:
-            return None
-
-        user_message = Message(
-            conversation_id=conversation_id,
-            role=MESSAGE_ROLE_USER,
-            content=content,
-        )
-        try:
-            self.db.add(user_message)
-            self.db.commit()
-            self.db.refresh(user_message)
-
-            assistant_text = LLM.invoke({
-                "conversation_id": conversation_id,
-                "message": content,
-            })
-
-            assistant_message = Message(
-                conversation_id=conversation_id,
-                role=MESSAGE_ROLE_ASSISTANT,
-                content=assistant_text,
-            )
-
-            self.db.add(assistant_message)
-            self.db.commit()
-            self.db.refresh(assistant_message)
-            
-            return user_message
-        except Exception:
-            self.db.rollback()
-            raise
+        return ChatResponse(message=generate_reply(message_data.content))

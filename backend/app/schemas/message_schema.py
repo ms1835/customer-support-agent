@@ -19,5 +19,5 @@ class MessageResponse(BaseModel):
     content: str
     created_at: datetime
 
-class ChatRequest(BaseModel):
-    content: str = Field(min_length=1)
+class ChatResponse(BaseModel):
+    message: str

@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 
 const API_URL = "http://localhost:8000";
 
-export default function App() {
-  const [conversationId, setConversationId] = useState(null);
+const App = () => {
+  const [conversationId, setConversationId] = useState(1);
   const [messages, setMessages] = useState([]);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
@@ -13,7 +13,7 @@ export default function App() {
       const response = await fetch(`${API_URL}/api/conversations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: 1 }),
+        body: JSON.stringify({ user_id: 2 }),
       });
 
       const conversation = await response.json();
@@ -35,7 +35,7 @@ export default function App() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/conversations/${conversationId}/chat`,
+        `${API_URL}/api/conversations/${conversationId}/messages`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -89,3 +89,5 @@ export default function App() {
     </main>
   );
 }
+
+export default App;
