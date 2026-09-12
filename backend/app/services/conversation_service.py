@@ -1,8 +1,8 @@
 from app.models.conversations import Conversation, ConversationStatus
-from app.models.messages import MessageRole
+from app.models.messages import Message, MessageRole
 from app.models.users import User
 from app.schemas.conversation_schema import ConversationCreateRequest
-from app.schemas.message_schema import ChatResponse, MessageCreateRequest
+from app.schemas.message_schema import MessageCreateRequest
 from app.services.llm_service import generate_reply
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -41,8 +41,32 @@ class ConversationService:
         self,
         conversation_id: int,
         message_data: MessageCreateRequest,
-    ) -> ChatResponse | None:
-        if message_data.role != MessageRole.USER:
-            raise ValueError("Only user messages can be sent to the assistant")
+    ) -> Message | None:
+        conversation = self.db.get(Conversation, conversation_id)
+        if conversation is None:
+            return None
 
-        return ChatResponse(message=generate_reply(message_data.content))
+        user_message = Message(
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=message_data.content,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        try:
+            self.db.add(user_message)
+            self.db.flush()
+
+            assistant_message = Message(
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=generate_reply(message_data.content),
+                created_at=datetime.now(timezone.utc),
+            )
+            self.db.add(assistant_message)
+            self.db.commit()
+            self.db.refresh(assistant_message)
+            return assistant_message
+        except Exception:
+            self.db.rollback()
+            raise

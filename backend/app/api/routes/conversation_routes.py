@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_conversation_service
 from app.schemas.conversation_schema import ConversationCreateRequest, ConversationResponse
-from app.schemas.message_schema import ChatResponse, MessageCreateRequest
+from app.schemas.message_schema import MessageCreateRequest, MessageResponse
 from app.services.conversation_service import ConversationService
 
 router = APIRouter(prefix="/api/conversations", tags=["Conversations"])
@@ -15,6 +15,7 @@ def get_conversation(
     conversation = service.get_conversation_by_id(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    return conversation
 
 
 @router.post("", response_model=ConversationResponse, status_code=201)
@@ -30,7 +31,8 @@ def create_new_conversation(
 
 @router.post(
     "/{conversation_id}/messages",
-    response_model=ChatResponse,
+    response_model=MessageResponse,
+    status_code=201,
 )
 def create_message(
     conversation_id: int,

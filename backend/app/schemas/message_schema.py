@@ -2,11 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.messages import MessageRole
-
-
 class MessageCreateRequest(BaseModel):
-    role: MessageRole
     content: str = Field(min_length=1)
 
 
@@ -15,9 +11,6 @@ class MessageResponse(BaseModel):
 
     id: int
     conversation_id: int
-    role: MessageRole
+    role: str
     content: str
     created_at: datetime
-
-class ChatResponse(BaseModel):
-    message: str

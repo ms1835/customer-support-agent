@@ -7,17 +7,28 @@ const App = () => {
   const [messages, setMessages] = useState([]);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
     async function startConversation() {
-      const response = await fetch(`${API_URL}/api/conversations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: 2 }),
-      });
+      try {
+        setStatus("Starting conversation...");
+        const response = await fetch(`${API_URL}/api/conversations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: 2 }),
+        });
 
-      const conversation = await response.json();
-      setConversationId(conversation.id);
+        if (!response.ok) {
+          throw new Error("Unable to start conversation");
+        }
+
+        const conversation = await response.json();
+        setConversationId(conversation.id);
+        setStatus("");
+      } catch (error) {
+        setStatus(error.message);
+      }
     }
 
     startConversation();
@@ -32,6 +43,7 @@ const App = () => {
     setContent("");
     setMessages((current) => [...current, { role: "user", content: text }]);
     setLoading(true);
+    setStatus("Sending...");
 
     try {
       const response = await fetch(
@@ -39,7 +51,7 @@ const App = () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: "user", content: text }),
+          body: JSON.stringify({ content: text }),
         }
       );
 
@@ -53,11 +65,9 @@ const App = () => {
         ...current,
         { role: message.role, content: message.content },
       ]);
+      setStatus("");
     } catch (error) {
-      setMessages((current) => [
-        ...current,
-        { role: "system", content: error.message },
-      ]);
+      setStatus(error.message);
     } finally {
       setLoading(false);
     }
@@ -73,9 +83,13 @@ const App = () => {
             {message.content}
           </div>
         ))}
-
-        {loading && <div className="message system">Sending...</div>}
       </section>
+
+      {status && (
+        <p className={`status ${loading ? "status-loading" : "status-error"}`}>
+          {status}
+        </p>
+      )}
 
       <form onSubmit={sendMessage}>
         <input

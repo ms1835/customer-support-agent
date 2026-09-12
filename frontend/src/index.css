@@ -37,8 +37,20 @@ body {
   background: #e6eee9;
 }
 
-.message.system {
+.status {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
+.status-loading {
+  color: #756b5f;
+}
+
+.status-error {
   background: #f5d8d4;
+  color: #8a3026;
+  padding: 8px 10px;
+  border-radius: 6px;
 }
 
 form {
