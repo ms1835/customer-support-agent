@@ -2,3 +2,4 @@ sqlalchemy
 psycopg[binary]
 alembic
 langchain-groq
+boto3
