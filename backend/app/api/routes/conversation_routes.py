@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_conversation_service
 from app.schemas.conversation_schema import ConversationCreateRequest, ConversationResponse
-from app.schemas.message_schema import MessageCreateRequest, MessageResponse
+from app.schemas.message_schema import AssistantResponse, MessageCreateRequest
 from app.services.conversation_service import ConversationService
 
 router = APIRouter(prefix="/api/conversations", tags=["Conversations"])
@@ -39,7 +39,7 @@ def create_new_conversation(
 
 @router.post(
     "/{conversation_id}/messages",
-    response_model=MessageResponse,
+    response_model=AssistantResponse,
     status_code=201,
 )
 def create_message(

@@ -2,8 +2,8 @@ from app.models.conversations import Conversation, ConversationStatus
 from app.models.messages import Message, MessageRole
 from app.models.users import User
 from app.schemas.conversation_schema import ConversationCreateRequest
-from app.schemas.message_schema import MessageCreateRequest
-from app.services.llm_service import generate_reply
+from app.schemas.message_schema import AssistantResponse, MessageCreateRequest
+from app.services.llm_service import generate_intent, generate_response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from datetime import datetime, timezone
@@ -50,7 +50,7 @@ class ConversationService:
         self,
         conversation_id: int,
         message_data: MessageCreateRequest,
-    ) -> Message | None:
+    ) -> AssistantResponse | None:
         conversation = self.db.get(Conversation, conversation_id)
         if conversation is None:
             return None
@@ -66,17 +66,25 @@ class ConversationService:
             self.db.add(user_message)
             self.db.flush()
 
+            intent = generate_intent(message_data.content)
+            if intent.category == "unknown":
+                response_text = (
+                    "That question is outside my support scope. "
+                    "I can help with products, orders, shipments, refunds, "
+                    "and cancellations."
+                )
+            else:
+                response_text = generate_response(message_data.content, intent)
             assistant_message = Message(
                 conversation_id=conversation_id,
                 role=MessageRole.ASSISTANT,
-                content=generate_reply(message_data.content),
+                content=response_text,
                 created_at=datetime.now(timezone.utc),
             )
             self.db.add(assistant_message)
             conversation.updated_at = datetime.now(timezone.utc)
             self.db.commit()
-            self.db.refresh(assistant_message)
-            return assistant_message
+            return AssistantResponse(response=response_text)
         except Exception:
             self.db.rollback()
             raise

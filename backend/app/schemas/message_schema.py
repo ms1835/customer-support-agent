@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 class MessageCreateRequest(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=4000)
 
 
 class MessageResponse(BaseModel):
@@ -14,3 +14,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     created_at: datetime
+
+
+class AssistantResponse(BaseModel):
+    response: str

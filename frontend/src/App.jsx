@@ -3,6 +3,21 @@ import { useEffect, useState } from "react";
 const API_URL = "http://localhost:8000";
 const USER_ID = 2;
 
+function displayMessage(message) {
+  if (message.role === "assistant") {
+    try {
+      const storedResponse = JSON.parse(message.content);
+      if (storedResponse.response) {
+        return { ...message, content: storedResponse.response };
+      }
+    } catch {
+      // Current assistant messages are already plain text.
+    }
+  }
+
+  return message;
+}
+
 const App = () => {
   const [conversations, setConversations] = useState([]);
   const [conversationId, setConversationId] = useState(null);
@@ -40,7 +55,7 @@ const App = () => {
 
   function selectConversation(conversation) {
     setConversationId(conversation.id);
-    setMessages(conversation.messages ?? []);
+    setMessages((conversation.messages ?? []).map(displayMessage));
     setContent("");
     setStatus("");
   }
@@ -94,15 +109,26 @@ const App = () => {
       }
 
       const message = await response.json();
+      const assistantMessage = {
+        role: "assistant",
+        content: message.response,
+      };
 
       setMessages((current) => [
         ...current,
-        { role: message.role, content: message.content },
+        assistantMessage,
       ]);
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === conversationId
-            ? { ...conversation, messages: [...(conversation.messages ?? []), { role: "user", content: text }, message] }
+            ? {
+                ...conversation,
+                messages: [
+                  ...(conversation.messages ?? []),
+                  { role: "user", content: text },
+                  assistantMessage,
+                ],
+              }
             : conversation
         )
       );
@@ -133,7 +159,11 @@ const App = () => {
               disabled={loading}
             >
               <strong>Conversation #{conversation.id}</strong>
-              <span>{conversation.messages?.at(-1)?.content ?? "No messages yet"}</span>
+              <span>
+                {conversation.messages?.length
+                  ? displayMessage(conversation.messages.at(-1)).content
+                  : "No messages yet"}
+              </span>
             </button>
           ))}
           {conversations.length === 0 && !status && (
