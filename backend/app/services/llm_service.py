@@ -1,3 +1,5 @@
+import json
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
@@ -46,6 +48,7 @@ def generate_response(
     message: str,
     intent: Intent,
     context: list[dict[str, str]] | None = None,
+    tool_result: dict | None = None,
 ) -> str:
     llm = ChatGroq(
         api_key=GROQ_API_KEY,
@@ -65,6 +68,8 @@ def generate_response(
                     "is internal context only; do not mention it or claim that an "
                     "order was changed, cancelled, refunded, or tracked. "
                     "For policy and documentation questions, answer using the provided context. "
+                    "For operational questions, answer using the tool result. "
+                    "Never invent order, shipment, tracking, or delivery details. "
                     "If the context does not contain the answer, say that you do not "
                     "have that information instead of inventing a policy."
                 )
@@ -75,6 +80,7 @@ def generate_response(
                     f"Internal category: {intent.category}\n"
                     f"Order number: {intent.order_number}\n"
                     f"Documentation context:\n{context_text or 'No relevant documentation was found.'}"
+                    f"\nTool result:\n{json.dumps(tool_result) if tool_result else 'No tool was called.'}"
                 )
             ),
         ]
