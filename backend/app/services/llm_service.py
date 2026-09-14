@@ -42,13 +42,20 @@ def generate_intent(message: str) -> Intent:
     return response
 
 
-def generate_response(message: str, intent: Intent) -> str:
+def generate_response(
+    message: str,
+    intent: Intent,
+    context: list[dict[str, str]] | None = None,
+) -> str:
     llm = ChatGroq(
         api_key=GROQ_API_KEY,
         model=GROQ_MODEL,
         temperature=0,
     )
     response_chain = llm | StrOutputParser()
+    context_text = "\n\n".join(
+        f"Source: {chunk['document_name']}\n{chunk['content']}" for chunk in (context or [])
+    )
     response = response_chain.invoke(
         [
             SystemMessage(
@@ -56,14 +63,18 @@ def generate_response(message: str, intent: Intent) -> str:
                     "You are a concise customer support assistant. "
                     "Respond naturally to the customer. The intent classification "
                     "is internal context only; do not mention it or claim that an "
-                    "order was changed, cancelled, refunded, or tracked."
+                    "order was changed, cancelled, refunded, or tracked. "
+                    "For policy and documentation questions, answer using the provided context. "
+                    "If the context does not contain the answer, say that you do not "
+                    "have that information instead of inventing a policy."
                 )
             ),
             HumanMessage(
                 content=(
                     f"Customer message: {message}\n"
                     f"Internal category: {intent.category}\n"
-                    f"Order number: {intent.order_number}"
+                    f"Order number: {intent.order_number}\n"
+                    f"Documentation context:\n{context_text or 'No relevant documentation was found.'}"
                 )
             ),
         ]

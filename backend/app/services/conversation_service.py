@@ -4,6 +4,7 @@ from app.models.users import User
 from app.schemas.conversation_schema import ConversationCreateRequest
 from app.schemas.message_schema import AssistantResponse, MessageCreateRequest
 from app.services.llm_service import generate_intent, generate_response
+from app.rag.retrieval import retrieve_relevant_chunks
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from datetime import datetime, timezone
@@ -74,7 +75,12 @@ class ConversationService:
                     "and cancellations."
                 )
             else:
-                response_text = generate_response(message_data.content, intent)
+                context = (
+                    retrieve_relevant_chunks(self.db, message_data.content)
+                    if intent.category in {"documentation", "refund", "cancel"}
+                    else None
+                )
+                response_text = generate_response(message_data.content, intent, context)
             assistant_message = Message(
                 conversation_id=conversation_id,
                 role=MessageRole.ASSISTANT,
