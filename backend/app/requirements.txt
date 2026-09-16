@@ -3,3 +3,4 @@ psycopg[binary]
 alembic
 langchain-groq
 boto3
+langgraph
