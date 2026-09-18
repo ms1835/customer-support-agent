@@ -8,8 +8,9 @@ class Intent(BaseModel):
         "documentation",
         "order",
         "shipment",
-        "refund",
         "cancel",
+        "cancellation",
+        "refund",
         "human",
         "unknown",
     ] = Field(description="The singular lowercase support category.")

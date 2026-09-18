@@ -25,8 +25,10 @@ class AgentState(TypedDict):
     final_response: str | None
 
 
-POLICY_INTENTS = {"documentation", "refund", "cancel"}
+POLICY_INTENTS = {"documentation"}
+APPROVAL_INTENTS = {"cancel", "cancellation", "refund"}
 TOOL_INTENTS = {"order", "shipment"}
+ESCALATION_INTENTS = {"human"}
 
 
 def build_support_graph(db: Session):
@@ -72,14 +74,32 @@ def build_support_graph(db: Session):
         return {"tool_result": result}
 
     def approval_node(state: AgentState) -> dict:
+        intent = state["intent"]
+        if intent in APPROVAL_INTENTS:
+            return {
+                "requires_approval": True,
+                "approval_status": "pending",
+            }
+
         return {
             "requires_approval": False,
             "approval_status": "not_required",
         }
 
+    def escalation_node(state: AgentState) -> dict:
+        return {
+            "requires_approval": False,
+            "approval_status": "escalated_to_human",
+        }
+
     def response_node(state: AgentState) -> dict:
         intent = state["intent"]
-        if intent == "unknown":
+        if intent == "human":
+            response = (
+                "I’m connecting you with a human support specialist for a more "
+                "detailed review of this issue."
+            )
+        elif intent == "unknown":
             response = (
                 "That question is outside my support scope. "
                 "I can help with products, orders, shipments, refunds, "
@@ -102,6 +122,10 @@ def build_support_graph(db: Session):
             return "retrieve"
         if state["intent"] in TOOL_INTENTS:
             return "tool"
+        if state["intent"] in APPROVAL_INTENTS:
+            return "approval"
+        if state["intent"] in ESCALATION_INTENTS:
+            return "escalation"
         return "approval"
 
     graph = StateGraph(AgentState)
@@ -109,16 +133,23 @@ def build_support_graph(db: Session):
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("tool", tool_node)
     graph.add_node("approval", approval_node)
+    graph.add_node("escalation", escalation_node)
     graph.add_node("response", response_node)
     graph.add_edge(START, "classify")
     graph.add_conditional_edges(
         "classify",
         route_after_classify,
-        {"retrieve": "retrieve", "tool": "tool", "approval": "approval"},
+        {
+            "retrieve": "retrieve",
+            "tool": "tool",
+            "approval": "approval",
+            "escalation": "escalation",
+        },
     )
     graph.add_edge("retrieve", "approval")
     graph.add_edge("tool", "approval")
     graph.add_edge("approval", "response")
+    graph.add_edge("escalation", "response")
     graph.add_edge("response", END)
     return graph.compile()
 
