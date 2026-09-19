@@ -25,7 +25,7 @@ class AgentState(TypedDict):
     final_response: str | None
 
 
-POLICY_INTENTS = {"documentation"}
+POLICY_INTENTS = {"documentation", "return"}
 APPROVAL_INTENTS = {"cancel", "cancellation", "refund"}
 TOOL_INTENTS = {"order", "shipment"}
 ESCALATION_INTENTS = {"human"}
@@ -41,7 +41,13 @@ def build_support_graph(db: Session):
         }
 
     def retrieve_node(state: AgentState) -> dict:
-        documents = retrieve_relevant_chunks(db, state["messages"][-1])
+        query = state["messages"][-1]
+        documents = retrieve_relevant_chunks(db, query)
+        print(f"RAG retrieval used for query: {query!r}")
+        print(f"RAG documents returned: {len(documents)}")
+        for index, chunk in enumerate(documents, start=1):
+            print(f"\n--- Graph Retrieved Chunk {index} | {chunk.get('document_name')} ---")
+            print(chunk.get("content", ""))
         return {"retrieved_documents": documents}
 
     def tool_node(state: AgentState) -> dict:

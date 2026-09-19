@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class Intent(BaseModel):
     category: Literal[
         "documentation",
+        "return",
         "order",
         "shipment",
         "cancel",

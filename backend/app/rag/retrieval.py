@@ -56,11 +56,13 @@ def retrieve_relevant_chunks(
     ]
 
     print(f"Retrieved {len(relevant_rows)} chunks for query: {query!r}")
-    for index, row in enumerate(rows, start=1):
-        if row["distance"] <= max_distance:
+    if not relevant_rows:
+        print("No RAG chunks matched the query within the configured distance threshold.")
+    else:
+        for index, chunk in enumerate(relevant_rows, start=1):
             print(
-                f"\n--- Chunk {index} | {row['document_name']} | "
-                f"distance={row['distance']:.4f} ---\n{row['content']}"
+                f"\n--- RAG Chunk {index} | {chunk['document_name']} ---\n"
+                f"{chunk['content']}"
             )
 
     return relevant_rows
