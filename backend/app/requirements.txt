@@ -2,5 +2,6 @@ sqlalchemy
 psycopg[binary]
 alembic
 langchain-groq
+langchain-aws
 boto3
 langgraph

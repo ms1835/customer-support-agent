@@ -5,8 +5,46 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
 
-from app.config.settings import GROQ_API_KEY, GROQ_MODEL
+try:
+    from langchain_aws import ChatBedrock
+except ImportError:  # pragma: no cover - dependency is optional until installed
+    ChatBedrock = None
+
+from app.config.settings import (
+    AWS_ACCESS_KEY_ID,
+    AWS_MODEL_ID,
+    AWS_REGION,
+    AWS_SECRET_ACCESS_KEY,
+    AWS_SESSION_TOKEN,
+    GROQ_API_KEY,
+    GROQ_MODEL,
+    LLM_PROVIDER,
+)
 from app.schemas.intent_schema import Intent
+
+
+def _build_llm(*, structured_output: bool = False):
+    if LLM_PROVIDER == "aws":
+        if ChatBedrock is None:
+            raise ImportError("langchain-aws is required when LLM_PROVIDER=aws")
+        llm = ChatBedrock(
+            model_id=AWS_MODEL_ID,
+            region_name=AWS_REGION,
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            aws_session_token=AWS_SESSION_TOKEN,
+            model_kwargs={"temperature": 0},
+        )
+    else:
+        llm = ChatGroq(
+            api_key=GROQ_API_KEY,
+            model=GROQ_MODEL,
+            temperature=0,
+        )
+
+    if structured_output:
+        return llm.with_structured_output(Intent, method="json_schema")
+    return llm
 
 
 def _extract_order_number(message: str) -> str | None:
@@ -52,11 +90,7 @@ def infer_fallback_intent(message: str) -> Intent:
 
 
 def generate_intent(message: str) -> Intent:
-    llm = ChatGroq(
-        api_key=GROQ_API_KEY,
-        model=GROQ_MODEL,
-        temperature=0,
-    ).with_structured_output(Intent, method="json_mode")
+    llm = _build_llm(structured_output=True)
 
     try:
         response = llm.invoke(
@@ -100,11 +134,7 @@ def generate_response(
     context: list[dict[str, str]] | None = None,
     tool_result: dict | None = None,
 ) -> str:
-    llm = ChatGroq(
-        api_key=GROQ_API_KEY,
-        model=GROQ_MODEL,
-        temperature=0,
-    )
+    llm = _build_llm()
     response_chain = llm | StrOutputParser()
     context_text = "\n\n".join(
         f"Source: {chunk['document_name']}\n{chunk['content']}" for chunk in (context or [])
