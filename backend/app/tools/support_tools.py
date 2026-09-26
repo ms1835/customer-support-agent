@@ -57,16 +57,24 @@ def get_shipment_status(db: Session, order_number: str) -> dict | None:
         select(Order).where(Order.order_number == _order_number(order_number))
     )
     if order is None:
-        return None
+        return None  # order itself not found
 
     shipment = db.scalar(
         select(Shipment).where(Shipment.order_id == order.id)
     )
     if shipment is None:
-        return None
+        # Order exists but has not been shipped yet — return informative state
+        # rather than None so the LLM can give a meaningful answer.
+        return {
+            "order_number": order.order_number,
+            "order_status": order.status.value,
+            "shipment_status": "not_shipped",
+            "message": "This order has not been shipped yet.",
+        }
 
     return {
         "order_number": order.order_number,
+        "order_status": order.status.value,
         "shipment_status": shipment.status.value,
         "tracking_number": shipment.tracking_number,
         "carrier": shipment.carrier,

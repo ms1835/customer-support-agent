@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Intent(BaseModel):
@@ -10,7 +10,6 @@ class Intent(BaseModel):
         "order",
         "shipment",
         "cancel",
-        "cancellation",
         "refund",
         "human",
         "unknown",
@@ -24,3 +23,10 @@ class Intent(BaseModel):
         le=1.0,
         description="Confidence in the classification, from 0.0 to 1.0.",
     )
+
+    @field_validator("order_number", mode="before")
+    @classmethod
+    def normalise_null_string(cls, v: object) -> object:
+        if isinstance(v, str) and v.strip().lower() in ("null", "none", ""):
+            return None
+        return v

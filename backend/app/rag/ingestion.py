@@ -117,7 +117,6 @@ def ingest_documents(
 		region_name=region,
 		aws_access_key_id=access_key_id,
 		aws_secret_access_key=secret_access_key,
-		aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
 	)
 	records: list[dict] = []
 

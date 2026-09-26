@@ -13,8 +13,7 @@ GROQ_MODEL = os.environ.get("GROQ_MODEL", "groq/compound-mini")
 AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
-AWS_SESSION_TOKEN = os.environ.get("AWS_SESSION_TOKEN")
-AWS_MODEL_ID = os.environ.get("AWS_LLM_MODEL", "anthropic.claude-3-5-sonnet-20240620-v1:0")
+AWS_MODEL_ID = os.environ.get("AWS_LLM_MODEL", "arn:aws:bedrock:ap-south-1:055255093250:inference-profile/global.amazon.nova-2-lite-v1:0")
 
 if LLM_PROVIDER == "aws":
     missing = []

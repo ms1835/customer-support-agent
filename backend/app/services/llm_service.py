@@ -1,13 +1,13 @@
 import json
 import re
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
 
 try:
     from langchain_aws import ChatBedrock
-except ImportError:  # pragma: no cover - dependency is optional until installed
+except ImportError:
     ChatBedrock = None
 
 from app.config.settings import (
@@ -15,7 +15,6 @@ from app.config.settings import (
     AWS_MODEL_ID,
     AWS_REGION,
     AWS_SECRET_ACCESS_KEY,
-    AWS_SESSION_TOKEN,
     GROQ_API_KEY,
     GROQ_MODEL,
     LLM_PROVIDER,
@@ -28,11 +27,11 @@ def _build_llm(*, structured_output: bool = False):
         if ChatBedrock is None:
             raise ImportError("langchain-aws is required when LLM_PROVIDER=aws")
         llm = ChatBedrock(
-            model_id=AWS_MODEL_ID,
-            region_name=AWS_REGION,
+            model=AWS_MODEL_ID,
+            provider="amazon",
+            region=AWS_REGION,
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-            aws_session_token=AWS_SESSION_TOKEN,
             model_kwargs={"temperature": 0},
         )
     else:
@@ -43,7 +42,8 @@ def _build_llm(*, structured_output: bool = False):
         )
 
     if structured_output:
-        return llm.with_structured_output(Intent, method="json_schema")
+        method = "json_mode" if LLM_PROVIDER == "aws" else "json_schema"
+        return llm.with_structured_output(Intent, method=method)
     return llm
 
 
@@ -89,27 +89,51 @@ def infer_fallback_intent(message: str) -> Intent:
     return Intent(category="unknown", order_number=order_number, confidence=0.0)
 
 
-def generate_intent(message: str) -> Intent:
+def generate_intent(message: str, history: list[dict] | None = None) -> Intent:
     llm = _build_llm(structured_output=True)
+
+    # Last 6 turns (3 exchanges) — enough for pronoun/reference resolution
+    # without ballooning classifier token cost.
+    recent = (history or [])[-6:]
+    history_messages: list = []
+    for turn in recent:
+        role = turn.get("role")
+        content = turn.get("content", "")
+        if role == "user":
+            history_messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            history_messages.append(AIMessage(content=content))
 
     try:
         response = llm.invoke(
             [
                 SystemMessage(
                     content=(
-                        "Classify the customer request using the Intent schema. "
-                        "Return only a valid JSON object matching the Intent schema; "
-                        "never return a customer-facing reply. "
-                        "The category must be exactly one of these lowercase values: "
-                        "documentation, return, order, shipment, refund, cancel, cancellation, human, unknown. "
-                        "Use unknown for requests unrelated to customer support, orders, "
-                        "shipments, returns, refunds, cancellations, or product documentation. "
-                        "Use singular return, order, shipment, refund, cancel, and cancellation values; "
-                        "do not use plural forms such as orders or shipments. "
-                        "Set order_number to the identifier exactly as written, or null "
-                        "when none is present. Set confidence to a number from 0.0 to 1.0."
+                        "Classify the customer support request using the Intent schema. "
+                        "Return ONLY a valid JSON object — never a customer-facing reply.\n"
+                        "Category must be exactly one of: "
+                        "documentation, return, order, shipment, refund, cancel, human, unknown.\n"
+                        "- Use 'documentation' for policy/FAQ questions (refund timelines, "
+                        "return eligibility, warranty, payment methods, account security).\n"
+                        "- Use 'return' when the customer wants to initiate a return.\n"
+                        "- Use 'refund' when the customer wants a refund on an order.\n"
+                        "- Use 'cancel' when the customer wants to cancel an order.\n"
+                        "- Use 'order' for order status or details lookups.\n"
+                        "- Use 'shipment' for tracking or delivery questions.\n"
+                        "- Use 'human' when the customer asks to speak with a person.\n"
+                        "- Use 'unknown' only when the request is completely unrelated to "
+                        "e-commerce support (orders, shipments, returns, refunds, cancellations, "
+                        "product policy). Do NOT use unknown for ambiguous follow-ups — "
+                        "use conversation history to resolve them.\n"
+                        "Use the conversation history to resolve pronouns and follow-up "
+                        "references (e.g. 'it', 'that order', 'how long') in the current message.\n"
+                        "order_number: extract from the current message exactly as written. "
+                        "If the customer refers to a prior order without repeating its number, "
+                        "extract it from the history. Set to null if no order number is present.\n"
+                        "confidence: 0.0–1.0."
                     )
                 ),
+                *history_messages,
                 HumanMessage(content=message),
             ]
         )
@@ -133,34 +157,85 @@ def generate_response(
     intent: Intent,
     context: list[dict[str, str]] | None = None,
     tool_result: dict | None = None,
+    history: list[dict] | None = None,
+    requires_approval: bool = False,
 ) -> str:
     llm = _build_llm()
     response_chain = llm | StrOutputParser()
-    context_text = "\n\n".join(
-        f"Source: {chunk['document_name']}\n{chunk['content']}" for chunk in (context or [])
+
+    # Cap history to the last 20 turns (10 exchanges) to stay within token limits.
+    recent_history = (history or [])[-20:]
+    history_messages: list = []
+    for turn in recent_history:
+        role = turn.get("role")
+        content = turn.get("content", "")
+        if role == "user":
+            history_messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            history_messages.append(AIMessage(content=content))
+
+    # Build the context block that accompanies the customer's message.
+    context_parts: list[str] = []
+    if context:
+        docs = "\n\n".join(
+            f"[{chunk['document_name']}]\n{chunk['content']}" for chunk in context
+        )
+        context_parts.append(f"Policy documentation:\n{docs}")
+
+    if tool_result:
+        error_key = tool_result.get("error", "")
+        if error_key == "no_order_number":
+            context_parts.append(
+                "Tool result: The customer did not provide an order number."
+            )
+        elif isinstance(error_key, str) and error_key.endswith("_not_found"):
+            order_id = error_key.replace("_not_found", "").replace("order_", "")
+            context_parts.append(
+                f"Tool result: No order found for order number {order_id}."
+            )
+        else:
+            context_parts.append(
+                f"Live order data:\n{json.dumps(tool_result, indent=2)}"
+            )
+
+    if not context_parts:
+        context_parts.append("No context retrieved.")
+
+    approval_note = (
+        "\nIMPORTANT: This action (cancel/refund/return) requires human review before "
+        "it is executed. Tell the customer their request has been received and is "
+        "pending review — do NOT confirm it is completed or promise a specific outcome."
+        if requires_approval else ""
     )
+
+    system_prompt = (
+        "You are a concise customer support assistant for an e-commerce company.\n"
+        "Scope: only answer questions about orders, shipments, returns, refunds, "
+        "cancellations, and product policy. For anything outside this scope, "
+        "politely decline and redirect.\n"
+        "Rules:\n"
+        "- Never invent order details, tracking numbers, delivery dates, or policies.\n"
+        "- For policy questions, answer strictly from the provided documentation; "
+        "if the documentation does not cover it, say you don't have that information.\n"
+        "- For order/shipment questions, answer from the live order data only.\n"
+        "- Do not mention internal labels (intent category, tool names, etc.).\n"
+        "- Do not claim an order was changed, cancelled, refunded, or shipped "
+        "unless the live data confirms it."
+        + approval_note
+    )
+
+    context_block = "\n\n".join(context_parts)
+
     response = response_chain.invoke(
         [
-            SystemMessage(
-                content=(
-                    "You are a concise customer support assistant. "
-                    "Respond naturally to the customer. The intent classification "
-                    "is internal context only; do not mention it or claim that an "
-                    "order was changed, cancelled, refunded, or tracked. "
-                    "For policy and documentation questions, answer using the provided context. "
-                    "For operational questions, answer using the tool result. "
-                    "Never invent order, shipment, tracking, or delivery details. "
-                    "If the context does not contain the answer, say that you do not "
-                    "have that information instead of inventing a policy."
-                )
-            ),
+            SystemMessage(content=system_prompt),
+            *history_messages,
             HumanMessage(
                 content=(
-                    f"Customer message: {message}\n"
-                    f"Internal category: {intent.category}\n"
-                    f"Order number: {intent.order_number}\n"
-                    f"Documentation context:\n{context_text or 'No relevant documentation was found.'}"
-                    f"\nTool result:\n{json.dumps(tool_result) if tool_result else 'No tool was called.'}"
+                    f"{message}\n\n"
+                    f"[Internal context — not visible to customer]\n"
+                    f"Topic: {intent.category} | Order ref: {intent.order_number or 'none'}\n"
+                    f"{context_block}"
                 )
             ),
         ]

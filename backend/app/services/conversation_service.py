@@ -55,6 +55,22 @@ class ConversationService:
         if conversation is None:
             return None
 
+        # Load the last 20 stored turns (10 exchanges) — enough for full context
+        # without risking token-limit overflows on long conversations.
+        prior_messages = list(
+            self.db.scalars(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.desc())
+                .limit(20)
+            ).all()
+        )
+        history = [
+            {"role": msg.role.value, "content": msg.content}
+            for msg in reversed(prior_messages)   # restore chronological order
+            if msg.role.value in ("user", "assistant")
+        ]
+
         user_message = Message(
             conversation_id=conversation_id,
             role=MessageRole.USER,
@@ -71,6 +87,7 @@ class ConversationService:
                 message_data.content,
                 str(conversation.user_id),
                 str(conversation_id),
+                history=history,
             )
             response_text = graph_state["final_response"]
             assistant_message = Message(
@@ -82,7 +99,11 @@ class ConversationService:
             self.db.add(assistant_message)
             conversation.updated_at = datetime.now(timezone.utc)
             self.db.commit()
-            return AssistantResponse(response=response_text)
+            return AssistantResponse(
+                response=response_text,
+                requires_approval=graph_state.get("requires_approval", False),
+                approval_status=graph_state.get("approval_status"),
+            )
         except Exception:
             self.db.rollback()
             raise

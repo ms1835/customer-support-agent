@@ -18,3 +18,5 @@ class MessageResponse(BaseModel):
 
 class AssistantResponse(BaseModel):
     response: str
+    requires_approval: bool = False
+    approval_status: str | None = None

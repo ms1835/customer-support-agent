@@ -12,21 +12,21 @@ def retrieve_relevant_chunks(
     query: str,
     model_id: str = DEFAULT_MODEL,
     limit: int = 5,
-    max_distance: float = 0.65,
+    max_distance: float = 0.75,
 ) -> list[dict[str, str]]:
     """Embed a query and return the closest knowledge chunks by cosine distance."""
     region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
     access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
     secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
     if not region or not access_key_id or not secret_access_key:
-        raise RuntimeError("AWS credentials are required for knowledge retrieval")
+        print("AWS credentials not configured; skipping RAG retrieval.")
+        return []
 
     client = boto3.client(
         "bedrock-runtime",
         region_name=region,
         aws_access_key_id=access_key_id,
         aws_secret_access_key=secret_access_key,
-        aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
     )
     embedding = create_embedding(client, query, model_id)
     embedding_value = "[" + ",".join(map(str, embedding)) + "]"
