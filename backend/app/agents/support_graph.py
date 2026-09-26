@@ -61,6 +61,7 @@ def _extract_order_from_history(history: list[dict]) -> str | None:
 def build_support_graph(db: Session):
 
     def classify_node(state: AgentState) -> dict:
+        print("\n[ROUTE] START → classify")
         user_message = state["messages"][-1]
         history = state.get("history", [])
         intent = generate_intent(user_message, history=history)
@@ -68,9 +69,11 @@ def build_support_graph(db: Session):
         category = "cancel" if intent.category == "cancellation" else intent.category
         # Carry forward the order number from history when the customer omits it
         order_number = intent.order_number or _extract_order_from_history(history)
+        print(f"[ROUTE] classify → intent={category!r} order={order_number!r}")
         return {"intent": category, "order_number": order_number}
 
     def retrieve_node(state: AgentState) -> dict:
+        print("[ROUTE] → retrieve")
         intent = state["intent"]
         user_message = state["messages"][-1]
         # Anchor the embedding to the intent topic so short follow-ups like
@@ -86,6 +89,7 @@ def build_support_graph(db: Session):
         return {"retrieved_documents": documents}
 
     def tool_node(state: AgentState) -> dict:
+        print("[ROUTE] → tool")
         intent = state["intent"]
         order_number = state["order_number"]
         if not order_number:
@@ -120,12 +124,15 @@ def build_support_graph(db: Session):
         return {"tool_result": result}
 
     def approval_node(state: AgentState) -> dict:
+        print("[ROUTE] → approval")
         return {"requires_approval": True, "approval_status": "pending"}
 
     def escalation_node(state: AgentState) -> dict:
+        print("[ROUTE] → escalation")
         return {"requires_approval": False, "approval_status": "escalated_to_human"}
 
     def response_node(state: AgentState) -> dict:
+        print("[ROUTE] → response")
         intent = state["intent"]
 
         if intent == "human":
@@ -165,23 +172,29 @@ def build_support_graph(db: Session):
     def route_after_classify(state: AgentState) -> str:
         intent = state["intent"]
         if intent in RETRIEVE_INTENTS:
-            return "retrieve"
-        if intent in TOOL_INTENTS:
-            return "tool"
-        if intent in ESCALATION_INTENTS:
-            return "escalation"
-        return "response"   # unknown → canned fallback
+            next_node = "retrieve"
+        elif intent in TOOL_INTENTS:
+            next_node = "tool"
+        elif intent in ESCALATION_INTENTS:
+            next_node = "escalation"
+        else:
+            next_node = "response"
+        print(f"[ROUTE] classify → {next_node}")
+        return next_node
 
     def route_after_retrieve(state: AgentState) -> str:
         intent = state["intent"]
         if intent in APPROVAL_INTENTS:
-            # If we have an order number, fetch its details before setting approval.
-            return "tool" if state["order_number"] else "approval"
-        # Pure policy intents (documentation) → respond directly.
-        return "response"
+            next_node = "tool" if state["order_number"] else "approval"
+        else:
+            next_node = "response"
+        print(f"[ROUTE] retrieve → {next_node}")
+        return next_node
 
     def route_after_tool(state: AgentState) -> str:
-        return "approval" if state["intent"] in APPROVAL_INTENTS else "response"
+        next_node = "approval" if state["intent"] in APPROVAL_INTENTS else "response"
+        print(f"[ROUTE] tool → {next_node}")
+        return next_node
 
     # ------------------------------------------------------------------ graph
 
