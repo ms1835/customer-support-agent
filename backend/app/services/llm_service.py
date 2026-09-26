@@ -214,6 +214,8 @@ def generate_response(
         "cancellations, and product policy. For anything outside this scope, "
         "politely decline and redirect.\n"
         "Rules:\n"
+        "- Reply in plain text only. Do not use markdown, bullet points, bold, "
+        "italics, headers, or any other formatting symbols.\n"
         "- Never invent order details, tracking numbers, delivery dates, or policies.\n"
         "- For policy questions, answer strictly from the provided documentation; "
         "if the documentation does not cover it, say you don't have that information.\n"

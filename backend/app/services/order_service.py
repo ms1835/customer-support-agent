@@ -8,6 +8,7 @@ from app.models.orders import Order, OrderStatus
 from app.models.products import Product
 from app.models.users import User
 from app.schemas.order_schema import OrderCreateRequest
+from datetime import datetime, timezone
 
 class OrderService:
 
@@ -44,6 +45,8 @@ class OrderService:
             user_id=order_data.user_id,
             status=OrderStatus.PENDING,
             total_amount=total_amount,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         order.items = [
             OrderItem(
@@ -56,8 +59,6 @@ class OrderService:
 
         try:
             self.db.add(order)
-            self.db.flush()
-            order.order_number = order.id
             self.db.commit()
             self.db.refresh(order)
             return order

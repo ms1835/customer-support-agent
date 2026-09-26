@@ -89,25 +89,34 @@ def build_support_graph(db: Session):
         intent = state["intent"]
         order_number = state["order_number"]
         if not order_number:
+            print(f"[tool_node] No order number in state — skipping tool call.")
             return {"tool_result": {"error": "no_order_number"}}
 
         try:
             if intent == "shipment":
+                print(f"[tool_node] Calling get_shipment_status(order={order_number!r})")
                 result = get_shipment_status(db, order_number)
             elif intent in APPROVAL_INTENTS:
+                print(f"[tool_node] Calling get_order_details(order={order_number!r}) for intent={intent!r}")
                 result = get_order_details(db, order_number)
             elif any(
                 kw in state["messages"][-1].lower()
                 for kw in ("status", "where", "track", "delivered")
             ):
+                print(f"[tool_node] Calling get_order_status(order={order_number!r})")
                 result = get_order_status(db, order_number)
             else:
+                print(f"[tool_node] Calling get_order_details(order={order_number!r})")
                 result = get_order_details(db, order_number)
         except ValueError as exc:
+            print(f"[tool_node] Tool raised ValueError: {exc}")
             return {"tool_result": {"error": str(exc)}}
 
         if result is None:
+            print(f"[tool_node] Tool returned None — order {order_number!r} not found.")
             return {"tool_result": {"error": f"order_{order_number}_not_found"}}
+
+        print(f"[tool_node] Tool result: {result}")
         return {"tool_result": result}
 
     def approval_node(state: AgentState) -> dict:
