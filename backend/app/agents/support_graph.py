@@ -5,15 +5,19 @@ from typing import Annotated, TypedDict
 
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
 from psycopg_pool import ConnectionPool
 from sqlalchemy.orm import Session
 
 from app.rag.retrieval import retrieve_relevant_chunks
 from app.services.llm_service import generate_intent, generate_response
 from app.tools.support_tools import (
+    cancel_order_action,
     get_order_details,
     get_order_status,
     get_shipment_status,
+    initiate_return_action,
+    refund_order_action,
 )
 
 _ORDER_RE = re.compile(r"#?(\d{3,})")
@@ -40,6 +44,7 @@ class AgentState(TypedDict):
     order_number: str | None
     retrieved_documents: list
     tool_result: dict | None
+    action_result: dict | None
     requires_approval: bool
     approval_status: str | None
     final_response: str | None
@@ -102,8 +107,6 @@ def build_support_graph(db: Session):
         print("[ROUTE] → retrieve")
         intent = state["intent"]
         user_message = state["messages"][-1]
-        # Anchor the embedding to the intent topic so short follow-ups like
-        # "How long does it take?" still retrieve the right policy document.
         topic = _INTENT_TOPIC.get(intent, intent)
         query = f"{topic}: {user_message}"
         try:
@@ -119,7 +122,7 @@ def build_support_graph(db: Session):
         intent = state["intent"]
         order_number = state["order_number"]
         if not order_number:
-            print(f"[tool_node] No order number in state — skipping tool call.")
+            print("[tool_node] No order number in state — skipping tool call.")
             return {"tool_result": {"error": "no_order_number"}}
 
         try:
@@ -150,8 +153,52 @@ def build_support_graph(db: Session):
         return {"tool_result": result}
 
     def approval_node(state: AgentState) -> dict:
-        print("[ROUTE] → approval")
-        return {"requires_approval": True, "approval_status": "pending"}
+        """
+        Pause execution and wait for human approval via LangGraph interrupt.
+        The graph is suspended here; resumption requires:
+          graph.invoke(Command(resume={"decision": "approve"|"reject"}), config)
+        """
+        print("[ROUTE] → approval (interrupt — waiting for human decision)")
+        decision = interrupt({
+            "action": state["intent"],
+            "order_number": state["order_number"],
+            "order_data": state.get("tool_result"),
+            "prompt": (
+                f"Approve {state['intent']} request for order "
+                f"#{state['order_number']}?"
+            ),
+        })
+        approved = isinstance(decision, dict) and decision.get("decision") == "approve"
+        status = "approved" if approved else "rejected"
+        print(f"[ROUTE] approval resumed → decision={decision!r} status={status!r}")
+        return {"requires_approval": True, "approval_status": status}
+
+    def execute_action_node(state: AgentState) -> dict:
+        """Execute the actual cancel/refund/return after human approval."""
+        print("[ROUTE] → execute_action")
+        if state.get("approval_status") != "approved":
+            print("[execute_action] Rejected — skipping action.")
+            return {"action_result": {"action": "rejected"}}
+
+        intent = state["intent"]
+        order_number = state["order_number"]
+
+        try:
+            if intent == "cancel":
+                result = cancel_order_action(db, order_number)
+            elif intent == "refund":
+                result = refund_order_action(db, order_number)
+            elif intent == "return":
+                result = initiate_return_action(db, order_number)
+            else:
+                result = {"error": f"unknown_action_{intent}"}
+        except Exception as exc:
+            print(f"[execute_action] Exception: {exc}")
+            result = {"error": str(exc)}
+
+        print(f"[execute_action] Result: {result}")
+        # Overwrite tool_result so response_node sees the final action outcome
+        return {"action_result": result, "tool_result": result}
 
     def escalation_node(state: AgentState) -> dict:
         print("[ROUTE] → escalation")
@@ -164,7 +211,7 @@ def build_support_graph(db: Session):
 
         if intent == "human":
             response = (
-                "I’m connecting you with a human support specialist for a more "
+                "I'm connecting you with a human support specialist for a more "
                 "detailed review of this issue."
             )
         elif intent == "unknown":
@@ -173,10 +220,14 @@ def build_support_graph(db: Session):
                 "cancellations, and product policy questions. "
                 "Please let me know if I can assist with any of those."
             )
+        elif intent in APPROVAL_INTENTS and not state.get("order_number"):
+            response = (
+                "Please provide your order number so I can look into that for you."
+            )
         elif intent in POLICY_INTENTS and not state["retrieved_documents"]:
             # No RAG context — refuse to answer from training data.
             response = (
-                "I don’t have documentation available to answer that question. "
+                "I don't have documentation available to answer that question. "
                 "Please contact our support team for more information."
             )
         else:
@@ -194,7 +245,6 @@ def build_support_graph(db: Session):
             )
 
         # Persist this turn into the checkpointed history.
-        # operator.add will append this delta to the accumulated list.
         new_history_delta = [
             {"role": "user", "content": current_message},
             {"role": "assistant", "content": response},
@@ -219,14 +269,21 @@ def build_support_graph(db: Session):
     def route_after_retrieve(state: AgentState) -> str:
         intent = state["intent"]
         if intent in APPROVAL_INTENTS:
-            next_node = "tool" if state["order_number"] else "approval"
+            # Need an order number to look up details and proceed to approval
+            next_node = "tool" if state["order_number"] else "response"
         else:
             next_node = "response"
         print(f"[ROUTE] retrieve → {next_node}")
         return next_node
 
     def route_after_tool(state: AgentState) -> str:
-        next_node = "approval" if state["intent"] in APPROVAL_INTENTS else "response"
+        intent = state["intent"]
+        if intent in APPROVAL_INTENTS:
+            tool_result = state.get("tool_result") or {}
+            # Only proceed to approval when order was found and has no error
+            next_node = "approval" if "error" not in tool_result else "response"
+        else:
+            next_node = "response"
         print(f"[ROUTE] tool → {next_node}")
         return next_node
 
@@ -237,6 +294,7 @@ def build_support_graph(db: Session):
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("tool", tool_node)
     graph.add_node("approval", approval_node)
+    graph.add_node("execute_action", execute_action_node)
     graph.add_node("escalation", escalation_node)
     graph.add_node("response", response_node)
 
@@ -248,13 +306,14 @@ def build_support_graph(db: Session):
     )
     graph.add_conditional_edges(
         "retrieve", route_after_retrieve,
-        {"tool": "tool", "approval": "approval", "response": "response"},
+        {"tool": "tool", "response": "response"},
     )
     graph.add_conditional_edges(
         "tool", route_after_tool,
         {"approval": "approval", "response": "response"},
     )
-    graph.add_edge("approval", "response")
+    graph.add_edge("approval", "execute_action")
+    graph.add_edge("execute_action", "response")
     graph.add_edge("escalation", "response")
     graph.add_edge("response", END)
     return graph.compile(checkpointer=_get_checkpointer())
@@ -268,11 +327,10 @@ def run_support_graph(
 ) -> AgentState:
     """
     conversation_id → thread_id → LangGraph checkpoint.
-    History is restored from the PostgreSQL checkpoint automatically;
-    no manual history loading is needed in the caller.
+    History is restored from the PostgreSQL checkpoint automatically.
+    May raise GraphInterrupt if an approval interrupt is hit.
     """
     graph = build_support_graph(db)
-    # Each conversation is a separate LangGraph thread.
     config = {"configurable": {"thread_id": str(conversation_id)}}
     print(f"[checkpointer] Invoking graph with thread_id={conversation_id!r}")
     return graph.invoke(
@@ -285,9 +343,28 @@ def run_support_graph(
             "order_number": None,
             "retrieved_documents": [],
             "tool_result": None,
+            "action_result": None,
             "requires_approval": False,
             "approval_status": None,
             "final_response": None,
         },
+        config=config,
+    )
+
+
+def resume_support_graph(
+    db: Session,
+    conversation_id: str,
+    decision: str,
+) -> AgentState:
+    """
+    Resume a graph that was paused by interrupt() in approval_node.
+    decision: "approve" | "reject"
+    """
+    graph = build_support_graph(db)
+    config = {"configurable": {"thread_id": str(conversation_id)}}
+    print(f"[checkpointer] Resuming graph thread_id={conversation_id!r} decision={decision!r}")
+    return graph.invoke(
+        Command(resume={"decision": decision}),
         config=config,
     )

@@ -171,6 +171,60 @@ button {
   cursor: pointer;
 }
 
+.approval-card {
+  margin: 14px 0;
+  padding: 16px 18px;
+  border: 1.5px solid #c35e38;
+  border-radius: 8px;
+  background: #fdf3ef;
+  max-width: 75%;
+}
+
+.approval-prompt {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: #5a3020;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.approve-btn {
+  background: #27352f;
+  color: #fff;
+  padding: 9px 20px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.approve-btn:hover:not(:disabled) {
+  background: #34463e;
+}
+
+.reject-btn {
+  background: transparent;
+  color: #8a3026;
+  padding: 9px 20px;
+  border-radius: 6px;
+  border: 1.5px solid #c35e38;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.reject-btn:hover:not(:disabled) {
+  background: #f5d8d4;
+}
+
+.approve-btn:disabled,
+.reject-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 720px) {
   .chat-shell {
     grid-template-columns: 1fr;

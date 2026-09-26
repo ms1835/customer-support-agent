@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes.agent_routes import router as agent_router
 from app.api.routes.conversation_routes import router as conversation_router
 from app.api.routes.order_routes import router as order_router
 from app.api.routes.product_routes import router as product_router
@@ -15,6 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(agent_router)
 app.include_router(order_router)
 app.include_router(conversation_router)
 app.include_router(user_router)

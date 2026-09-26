@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API_URL = "http://localhost:8000";
 const USER_ID = 2;
@@ -14,7 +14,6 @@ function displayMessage(message) {
       // Current assistant messages are already plain text.
     }
   }
-
   return message;
 }
 
@@ -25,6 +24,12 @@ const App = () => {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [pendingApproval, setPendingApproval] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, pendingApproval]);
 
   useEffect(() => {
     async function loadConversations() {
@@ -33,14 +38,9 @@ const App = () => {
         const response = await fetch(
           `${API_URL}/api/conversations?user_id=${USER_ID}`
         );
-
-        if (!response.ok) {
-          throw new Error("Unable to load conversations");
-        }
-
+        if (!response.ok) throw new Error("Unable to load conversations");
         const savedConversations = await response.json();
         setConversations(savedConversations);
-
         if (savedConversations.length > 0) {
           selectConversation(savedConversations[0]);
         }
@@ -49,7 +49,6 @@ const App = () => {
         setStatus(error.message);
       }
     }
-
     loadConversations();
   }, []);
 
@@ -58,11 +57,11 @@ const App = () => {
     setMessages((conversation.messages ?? []).map(displayMessage));
     setContent("");
     setStatus("");
+    setPendingApproval(false);
   }
 
   async function createConversation() {
     if (loading) return;
-
     try {
       setStatus("Creating conversation...");
       const response = await fetch(`${API_URL}/api/conversations`, {
@@ -70,11 +69,7 @@ const App = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: USER_ID }),
       });
-
-      if (!response.ok) {
-        throw new Error("Unable to create conversation");
-      }
-
+      if (!response.ok) throw new Error("Unable to create conversation");
       const conversation = await response.json();
       setConversations((current) => [conversation, ...current]);
       selectConversation(conversation);
@@ -85,9 +80,8 @@ const App = () => {
 
   async function sendMessage(event) {
     event.preventDefault();
-
     const text = content.trim();
-    if (!text || !conversationId || loading) return;
+    if (!text || !conversationId || loading || pendingApproval) return;
 
     setContent("");
     setMessages((current) => [...current, { role: "user", content: text }]);
@@ -103,38 +97,68 @@ const App = () => {
           body: JSON.stringify({ content: text }),
         }
       );
+      if (!response.ok) throw new Error("Unable to send message");
 
-      if (!response.ok) {
-        throw new Error("Unable to send message");
-      }
-
-      const message = await response.json();
-      const assistantMessage = {
-        role: "assistant",
-        content: message.response,
-      };
-
-      setMessages((current) => [
-        ...current,
-        assistantMessage,
-      ]);
+      const data = await response.json();
+      const assistantMessage = { role: "assistant", content: data.response };
+      setMessages((current) => [...current, assistantMessage]);
       setConversations((current) =>
-        current.map((conversation) =>
-          conversation.id === conversationId
+        current.map((c) =>
+          c.id === conversationId
             ? {
-                ...conversation,
+                ...c,
                 messages: [
-                  ...(conversation.messages ?? []),
+                  ...(c.messages ?? []),
                   { role: "user", content: text },
                   assistantMessage,
                 ],
               }
-            : conversation
+            : c
+        )
+      );
+
+      if (data.requires_approval && data.approval_status === "pending") {
+        setPendingApproval(true);
+      }
+      setStatus("");
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDecision(decision) {
+    if (loading) return;
+    setLoading(true);
+    setPendingApproval(false);
+    setStatus(decision === "approve" ? "Processing approval..." : "Rejecting request...");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/agent/${conversationId}/resume`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision }),
+        }
+      );
+      if (!response.ok) throw new Error("Unable to process decision");
+
+      const data = await response.json();
+      const assistantMessage = { role: "assistant", content: data.response };
+      setMessages((current) => [...current, assistantMessage]);
+      setConversations((current) =>
+        current.map((c) =>
+          c.id === conversationId
+            ? { ...c, messages: [...(c.messages ?? []), assistantMessage] }
+            : c
         )
       );
       setStatus("");
     } catch (error) {
       setStatus(error.message);
+      setPendingApproval(true);
     } finally {
       setLoading(false);
     }
@@ -192,6 +216,32 @@ const App = () => {
               {message.content}
             </div>
           ))}
+
+          {pendingApproval && (
+            <div className="approval-card">
+              <p className="approval-prompt">
+                This action requires your approval. Would you like to proceed?
+              </p>
+              <div className="approval-actions">
+                <button
+                  className="approve-btn"
+                  onClick={() => handleDecision("approve")}
+                  disabled={loading}
+                >
+                  Approve
+                </button>
+                <button
+                  className="reject-btn"
+                  onClick={() => handleDecision("reject")}
+                  disabled={loading}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
         </section>
 
         {status && (
@@ -204,14 +254,14 @@ const App = () => {
           <input
             value={content}
             onChange={(event) => setContent(event.target.value)}
-            placeholder="Ask about an order..."
-            disabled={!conversationId || loading}
+            placeholder={pendingApproval ? "Approve or reject the request above first..." : "Ask about an order..."}
+            disabled={!conversationId || loading || pendingApproval}
           />
-          <button disabled={!conversationId || loading}>Send</button>
+          <button disabled={!conversationId || loading || pendingApproval}>Send</button>
         </form>
       </section>
     </main>
   );
-}
+};
 
 export default App;
