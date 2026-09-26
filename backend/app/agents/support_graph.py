@@ -1,7 +1,11 @@
+import operator
+import os
 import re
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
+from psycopg_pool import ConnectionPool
 from sqlalchemy.orm import Session
 
 from app.rag.retrieval import retrieve_relevant_chunks
@@ -27,7 +31,9 @@ _INTENT_TOPIC: dict[str, str] = {
 
 class AgentState(TypedDict):
     messages: list[str]
-    history: list[dict]        # [{"role": "user"|"assistant", "content": str}, ...]
+    # Annotated with operator.add so LangGraph appends deltas across checkpoint
+    # turns instead of overwriting — the full conversation history grows here.
+    history: Annotated[list[dict], operator.add]
     user_id: str
     conversation_id: str
     intent: str | None
@@ -46,6 +52,26 @@ APPROVAL_INTENTS = {"cancel", "refund", "return"}
 RETRIEVE_INTENTS = POLICY_INTENTS | APPROVAL_INTENTS
 TOOL_INTENTS = {"order", "shipment"}
 ESCALATION_INTENTS = {"human"}
+
+
+_checkpointer: PostgresSaver | None = None
+_pool: ConnectionPool | None = None
+
+
+def _get_checkpointer() -> PostgresSaver:
+    """Lazy singleton — creates the connection pool and PostgresSaver once."""
+    global _checkpointer, _pool
+    if _checkpointer is None:
+        conn_string = os.environ.get("DATABASE_URL", "")
+        _pool = ConnectionPool(
+            conninfo=conn_string,
+            max_size=10,
+            kwargs={"autocommit": True},
+        )
+        _checkpointer = PostgresSaver(_pool)
+        _checkpointer.setup()   # creates checkpoint tables if they don't exist
+        print("[checkpointer] PostgresSaver initialised and tables ensured.")
+    return _checkpointer
 
 
 def _extract_order_from_history(history: list[dict]) -> str | None:
@@ -134,6 +160,7 @@ def build_support_graph(db: Session):
     def response_node(state: AgentState) -> dict:
         print("[ROUTE] → response")
         intent = state["intent"]
+        current_message = state["messages"][-1]
 
         if intent == "human":
             response = (
@@ -158,14 +185,21 @@ def build_support_graph(db: Session):
                 "order_number": state["order_number"],
             })()
             response = generate_response(
-                message=state["messages"][-1],
+                message=current_message,
                 intent=intent_obj,
                 context=state["retrieved_documents"],
                 tool_result=state["tool_result"],
                 history=state.get("history", []),
                 requires_approval=state.get("requires_approval", False),
             )
-        return {"final_response": response}
+
+        # Persist this turn into the checkpointed history.
+        # operator.add will append this delta to the accumulated list.
+        new_history_delta = [
+            {"role": "user", "content": current_message},
+            {"role": "assistant", "content": response},
+        ]
+        return {"final_response": response, "history": new_history_delta}
 
     # ------------------------------------------------------------------ routing
 
@@ -223,7 +257,7 @@ def build_support_graph(db: Session):
     graph.add_edge("approval", "response")
     graph.add_edge("escalation", "response")
     graph.add_edge("response", END)
-    return graph.compile()
+    return graph.compile(checkpointer=_get_checkpointer())
 
 
 def run_support_graph(
@@ -231,13 +265,20 @@ def run_support_graph(
     message: str,
     user_id: str,
     conversation_id: str,
-    history: list[dict] | None = None,
 ) -> AgentState:
+    """
+    conversation_id → thread_id → LangGraph checkpoint.
+    History is restored from the PostgreSQL checkpoint automatically;
+    no manual history loading is needed in the caller.
+    """
     graph = build_support_graph(db)
+    # Each conversation is a separate LangGraph thread.
+    config = {"configurable": {"thread_id": str(conversation_id)}}
+    print(f"[checkpointer] Invoking graph with thread_id={conversation_id!r}")
     return graph.invoke(
         {
             "messages": [message],
-            "history": history or [],
+            "history": [],          # operator.add: appends [] → preserves checkpoint history
             "user_id": user_id,
             "conversation_id": conversation_id,
             "intent": None,
@@ -247,5 +288,6 @@ def run_support_graph(
             "requires_approval": False,
             "approval_status": None,
             "final_response": None,
-        }
+        },
+        config=config,
     )
