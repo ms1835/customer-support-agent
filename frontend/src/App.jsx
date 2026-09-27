@@ -256,10 +256,10 @@ const App = () => {
         </header>
 
         <section className="messages">
-          {messages.length === 0 && conversationId && (
+          {messages.length === 0 && conversationId && !streamingContent && (
             <p className="empty-messages">Ask us anything about your order.</p>
           )}
-          {!conversationId && !status && (
+          {!conversationId && (
             <p className="empty-messages">Choose a past conversation or start a new chat.</p>
           )}
 
@@ -322,7 +322,7 @@ const App = () => {
             placeholder={
               pendingApproval
                 ? "Approve or reject the request above first..."
-                : "Ask about an order..."
+                : "Ask something..."
             }
             disabled={!conversationId || loading || pendingApproval}
           />
