@@ -3,17 +3,16 @@ from app.models.messages import Message, MessageRole
 from app.models.users import User
 from app.schemas.conversation_schema import ConversationCreateRequest
 from app.schemas.message_schema import AssistantResponse, MessageCreateRequest
-from app.agents.support_graph import resume_support_graph, run_support_graph
+from app.agents.support_graph import (
+    PENDING_APPROVAL_MESSAGE,
+    resume_support_graph,
+    run_support_graph,
+)
 from langgraph.errors import GraphInterrupt
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from datetime import datetime, timezone
 
-
-_PENDING_APPROVAL_MESSAGE = (
-    "Your request has been received and is pending approval. "
-    "Please review the details and approve or reject below."
-)
 
 
 class ConversationService:
@@ -89,7 +88,7 @@ class ConversationService:
             if response_text is None:
                 # Graph paused at interrupt() in approval_node — waiting for
                 # human decision via POST /api/agent/{thread_id}/resume
-                response_text = _PENDING_APPROVAL_MESSAGE
+                response_text = PENDING_APPROVAL_MESSAGE
                 requires_approval = True
                 approval_status = "pending"
             else:

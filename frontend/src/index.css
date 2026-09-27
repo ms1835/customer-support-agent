@@ -132,6 +132,20 @@ body {
   background: #e6e1d5;
 }
 
+.message.assistant.streaming {
+  opacity: 0.85;
+}
+
+.cursor {
+  display: inline-block;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 .status {
   margin: 10px 0 0;
   font-size: 14px;
