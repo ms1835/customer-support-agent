@@ -5,3 +5,4 @@ langchain-groq
 langchain-aws
 boto3
 langgraph
+tenacity

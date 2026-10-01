@@ -1,14 +1,24 @@
 import json
+import logging
 import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential_jitter
+)
 
 try:
     from langchain_aws import ChatBedrock
+    import botocore.config
 except ImportError:
     ChatBedrock = None
+    botocore = None
 
 from app.config.settings import (
     AWS_ACCESS_KEY_ID,
@@ -20,6 +30,56 @@ from app.config.settings import (
     LLM_PROVIDER,
 )
 from app.schemas.intent_schema import Intent
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Retry / timeout helpers
+# ---------------------------------------------------------------------------
+
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Return True for transient errors worth retrying."""
+    if getattr(exc, "status_code", None) in _RETRYABLE_STATUS_CODES:
+        return True
+    try:
+        import httpx
+        if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError)):
+            return True
+    except ImportError:
+        pass
+    try:
+        import botocore.exceptions
+        if isinstance(exc, (
+            botocore.exceptions.ConnectTimeoutError,
+            botocore.exceptions.ReadTimeoutError,
+        )):
+            return True
+    except (ImportError, AttributeError):
+        pass
+    return False
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential_jitter(initial=1, max=30),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _invoke(chain, messages):
+    """Invoke any LangChain chain/LLM with retry + exponential backoff."""
+    return chain.invoke(messages)
+
+
+# ---------------------------------------------------------------------------
+# LLM builder
+# ---------------------------------------------------------------------------
+
+_LLM_TIMEOUT_CONNECT = 5    # seconds to establish connection
+_LLM_TIMEOUT_READ    = 60   # seconds to receive the full response
 
 
 def _build_llm(*, structured_output: bool = False):
@@ -33,12 +93,17 @@ def _build_llm(*, structured_output: bool = False):
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
             model_kwargs={"temperature": 0},
+            config=botocore.config.Config(
+                connect_timeout=_LLM_TIMEOUT_CONNECT,
+                read_timeout=_LLM_TIMEOUT_READ,
+            ),
         )
     else:
         llm = ChatGroq(
             api_key=GROQ_API_KEY,
             model=GROQ_MODEL,
             temperature=0,
+            request_timeout=_LLM_TIMEOUT_READ,
         )
 
     if structured_output:
@@ -105,7 +170,8 @@ def generate_intent(message: str, history: list[dict] | None = None) -> Intent:
             history_messages.append(AIMessage(content=content))
 
     try:
-        response = llm.invoke(
+        response = _invoke(
+            llm,
             [
                 SystemMessage(
                     content=(
@@ -228,7 +294,8 @@ def generate_response(
 
     context_block = "\n\n".join(context_parts)
 
-    response = response_chain.invoke(
+    response = _invoke(
+        response_chain,
         [
             SystemMessage(content=system_prompt),
             *history_messages,
