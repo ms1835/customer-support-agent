@@ -10,7 +10,10 @@ from langgraph.types import Command, interrupt
 from psycopg_pool import ConnectionPool
 from sqlalchemy.orm import Session
 
+from app.models.conversations import Conversation, ConversationStatus
+from app.models.support_tickets import EscalationType, TicketPriority
 from app.rag.retrieval import retrieve_relevant_chunks
+from app.services.escalation_service import EscalationService
 from app.services.llm_service import generate_intent, generate_response
 from app.tools.support_tools import (
     cancel_order_action,
@@ -38,6 +41,13 @@ PENDING_APPROVAL_MESSAGE = (
     "Please review the details and approve or reject below."
 )
 
+# Keywords that trigger auto-escalation regardless of classified intent.
+_FRUSTRATION_PATTERNS = re.compile(
+    r"\b(this is ridiculous|unacceptable|speak to a manager|terrible service|"
+    r"worst|i am furious|so angry|fed up|useless|incompetent|escalate)\b",
+    re.IGNORECASE,
+)
+
 
 class AgentState(TypedDict):
     messages: list[str]
@@ -52,6 +62,10 @@ class AgentState(TypedDict):
     requires_approval: bool
     approval_status: str | None
     final_response: str | None
+    # Escalation fields
+    escalation_ticket_id: int | None
+    assigned_agent_name: str | None
+    auto_escalate: bool  # set by routing when auto-escalation is triggered
 
 
 POLICY_INTENTS = {"documentation"}
@@ -84,11 +98,44 @@ def _extract_order_from_history(history: list[dict]) -> str | None:
     return None
 
 
+def _should_auto_escalate(message: str) -> bool:
+    """Return True when the message contains strong frustration signals."""
+    return bool(_FRUSTRATION_PATTERNS.search(message))
+
+
 def build_support_graph(db: Session):
+
+    # ------------------------------------------------------------------ nodes
+
+    def guard_node(state: AgentState) -> dict:
+        """
+        Entry guard — runs before classify.
+        If the conversation is already escalated, emit an SSE event and
+        short-circuit with a final_response so the graph ends without
+        invoking the bot.
+        """
+        write = get_stream_writer()
+        conversation_id = int(state["conversation_id"])
+        conversation = db.get(Conversation, conversation_id)
+
+        if conversation and conversation.status == ConversationStatus.ESCALATED:
+            print("[ROUTE] guard → conversation already escalated, short-circuiting")
+            write({"event": "escalated", "data": {
+                "message": "Your conversation is being handled by a human support agent.",
+            }})
+            return {
+                "intent": "already_escalated",
+                "final_response": (
+                    "Your conversation is currently being handled by one of our "
+                    "human support agents. They will respond to you shortly. "
+                    "Please wait — you do not need to send another message."
+                ),
+            }
+        return {}
 
     def classify_node(state: AgentState) -> dict:
         write = get_stream_writer()
-        print("\n[ROUTE] START → classify")
+        print("\n[ROUTE] guard → classify")
         write({"event": "thinking", "data": {"message": "Classifying your request..."}})
 
         user_message = state["messages"][-1]
@@ -96,8 +143,14 @@ def build_support_graph(db: Session):
         intent = generate_intent(user_message, history=history)
         category = "cancel" if intent.category == "cancellation" else intent.category
         order_number = intent.order_number or _extract_order_from_history(history)
-        print(f"[ROUTE] classify → intent={category!r} order={order_number!r}")
-        return {"intent": category, "order_number": order_number}
+
+        # Check auto-escalation: frustration keywords override the classified intent.
+        auto_escalate = _should_auto_escalate(user_message)
+        if auto_escalate:
+            print(f"[ROUTE] classify → AUTO-ESCALATE (intent was {category!r})")
+
+        print(f"[ROUTE] classify → intent={category!r} order={order_number!r} auto_escalate={auto_escalate}")
+        return {"intent": category, "order_number": order_number, "auto_escalate": auto_escalate}
 
     def retrieve_node(state: AgentState) -> dict:
         write = get_stream_writer()
@@ -126,7 +179,6 @@ def build_support_graph(db: Session):
             print("[tool_node] No order number — skipping tool call.")
             return {"tool_result": {"error": "no_order_number"}}
 
-        # Determine tool name before calling so we can emit tool_started.
         if intent == "shipment":
             tool_name = "get_shipment_status"
         elif intent in APPROVAL_INTENTS:
@@ -164,7 +216,6 @@ def build_support_graph(db: Session):
         write = get_stream_writer()
         print("[ROUTE] → approval (interrupt — waiting for human decision)")
 
-        # Emit before pausing so the UI can show approve/reject immediately.
         write({"event": "approval_required", "data": {
             "action": state["intent"],
             "order_number": state["order_number"],
@@ -213,21 +264,89 @@ def build_support_graph(db: Session):
         return {"action_result": result, "tool_result": result}
 
     def escalation_node(state: AgentState) -> dict:
+        """
+        Escalate conversation to a human agent:
+        1. Emit escalation_started SSE
+        2. Call EscalationService — creates SupportTicket, auto-assigns agent
+        3. Emit escalation_complete SSE with ticket_id and agent name
+        """
+        write = get_stream_writer()
         print("[ROUTE] → escalation")
-        return {"requires_approval": False, "approval_status": "escalated_to_human"}
+        write({"event": "escalation_started", "data": {
+            "message": "Connecting you with a human support agent...",
+        }})
+
+        conversation_id = int(state["conversation_id"])
+        auto_escalate = state.get("auto_escalate", False)
+        intent = state.get("intent", "human")
+
+        # Determine escalation type and build a human-readable reason.
+        if auto_escalate:
+            escalation_type = EscalationType.AUTO_SENTIMENT
+            reason = "Auto-escalated: high frustration detected in user message."
+        else:
+            escalation_type = EscalationType.USER_REQUESTED
+            reason = "User requested to speak with a human support agent."
+
+        try:
+            svc = EscalationService(db)
+            ticket = svc.escalate_conversation(
+                conversation_id=conversation_id,
+                reason=reason,
+                escalation_type=escalation_type,
+                priority=TicketPriority.HIGH if auto_escalate else TicketPriority.MEDIUM,
+            )
+
+            # Load agent name — assigned_agent may be None if no one is available.
+            agent_name: str | None = None
+            if ticket.assigned_agent_id:
+                db.refresh(ticket)
+                agent_name = ticket.assigned_agent.name if ticket.assigned_agent else None
+
+            print(f"[escalation_node] Ticket #{ticket.id} created, agent={agent_name!r}")
+            write({"event": "escalation_complete", "data": {
+                "ticket_id": ticket.id,
+                "assigned_agent": agent_name,
+                "message": (
+                    f"You've been connected with {agent_name}. They'll be with you shortly."
+                    if agent_name
+                    else "A support agent will be with you shortly."
+                ),
+            }})
+            return {
+                "escalation_ticket_id": ticket.id,
+                "assigned_agent_name": agent_name,
+            }
+
+        except Exception as exc:
+            print(f"[escalation_node] Failed to create ticket: {exc}")
+            write({"event": "escalation_complete", "data": {
+                "error": "Unable to connect right now. Please try again.",
+            }})
+            return {"escalation_ticket_id": None, "assigned_agent_name": None}
 
     def response_node(state: AgentState) -> dict:
-        # NOTE: LangGraph's "messages" stream mode automatically captures LLM
-        # tokens from generate_response() — no manual streaming needed here.
         print("[ROUTE] → response")
         intent = state["intent"]
         current_message = state["messages"][-1]
 
-        if intent == "human":
-            response = (
-                "I'm connecting you with a human support specialist for a more "
-                "detailed review of this issue."
-            )
+        if intent == "already_escalated":
+            # guard_node already set final_response — just flush history.
+            response = state["final_response"]
+        elif intent == "human":
+            agent_name = state.get("assigned_agent_name")
+            ticket_id = state.get("escalation_ticket_id")
+            if agent_name and ticket_id:
+                response = (
+                    f"I've connected you with {agent_name}, one of our human support specialists "
+                    f"(Ticket #{ticket_id}). They'll review your case and respond shortly. "
+                    f"You can continue in this conversation."
+                )
+            else:
+                response = (
+                    "I've escalated your conversation to our human support team. "
+                    "A specialist will be with you shortly."
+                )
         elif intent == "unknown":
             response = (
                 "I can only help with orders, shipments, returns, refunds, "
@@ -263,14 +382,21 @@ def build_support_graph(db: Session):
 
     # ------------------------------------------------------------------ routing
 
+    def route_after_guard(state: AgentState) -> str:
+        """Skip classify + bot entirely if conversation is already escalated."""
+        if state.get("intent") == "already_escalated":
+            return "response"
+        return "classify"
+
     def route_after_classify(state: AgentState) -> str:
         intent = state["intent"]
-        if intent in RETRIEVE_INTENTS:
+        # Auto-escalation overrides the classified intent.
+        if state.get("auto_escalate") or intent in ESCALATION_INTENTS:
+            next_node = "escalation"
+        elif intent in RETRIEVE_INTENTS:
             next_node = "retrieve"
         elif intent in TOOL_INTENTS:
             next_node = "tool"
-        elif intent in ESCALATION_INTENTS:
-            next_node = "escalation"
         else:
             next_node = "response"
         print(f"[ROUTE] classify → {next_node}")
@@ -298,6 +424,7 @@ def build_support_graph(db: Session):
     # ------------------------------------------------------------------ graph
 
     graph = StateGraph(AgentState)
+    graph.add_node("guard", guard_node)
     graph.add_node("classify", classify_node)
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("tool", tool_node)
@@ -306,7 +433,11 @@ def build_support_graph(db: Session):
     graph.add_node("escalation", escalation_node)
     graph.add_node("response", response_node)
 
-    graph.add_edge(START, "classify")
+    graph.add_edge(START, "guard")
+    graph.add_conditional_edges(
+        "guard", route_after_guard,
+        {"classify": "classify", "response": "response"},
+    )
     graph.add_conditional_edges(
         "classify", route_after_classify,
         {"retrieve": "retrieve", "tool": "tool",
@@ -349,6 +480,9 @@ def run_support_graph(db: Session, message: str, user_id: str, conversation_id: 
             "requires_approval": False,
             "approval_status": None,
             "final_response": None,
+            "escalation_ticket_id": None,
+            "assigned_agent_name": None,
+            "auto_escalate": False,
         },
         config=config,
     )
@@ -375,14 +509,14 @@ _INITIAL_STATE_KEYS = {
     "requires_approval": False,
     "approval_status": None,
     "final_response": None,
+    "escalation_ticket_id": None,
+    "assigned_agent_name": None,
+    "auto_escalate": False,
 }
 
 
 def stream_support_graph(db: Session, message: str, user_id: str, conversation_id: str):
-    """
-    Yields (mode, data) tuples from graph.stream().
-    Callers use stream_mode=["custom","messages","updates"].
-    """
+    """Yields (mode, data) tuples from graph.stream()."""
     graph = build_support_graph(db)
     config = {"configurable": {"thread_id": str(conversation_id)}}
     state = {
@@ -396,9 +530,7 @@ def stream_support_graph(db: Session, message: str, user_id: str, conversation_i
 
 
 def stream_resume_graph(db: Session, conversation_id: str, decision: str):
-    """
-    Yields (mode, data) tuples resuming from an interrupt checkpoint.
-    """
+    """Yields (mode, data) tuples resuming from an interrupt checkpoint."""
     graph = build_support_graph(db)
     config = {"configurable": {"thread_id": str(conversation_id)}}
     print(f"[stream] Resuming stream thread_id={conversation_id!r} decision={decision!r}")
