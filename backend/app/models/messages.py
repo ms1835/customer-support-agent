@@ -8,6 +8,7 @@ class MessageRole(str, Enum):
     ASSISTANT = "assistant"
     SYSTEM = "system"
     TOOL = "tool"
+    AGENT = "agent"
 
 class Message(Base):
     __tablename__ = "messages"

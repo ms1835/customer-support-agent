@@ -9,6 +9,7 @@ class ConversationStatus(str, Enum):
     OPEN = "open"
     PENDING = "pending"
     RESOLVED = "resolved"
+    ESCALATED = "escalated"
 
 class Conversation(Base):
     __tablename__ = "conversations"
@@ -40,5 +41,11 @@ class Conversation(Base):
     messages = relationship(
         "Message",
         back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+    ticket = relationship(
+        "SupportTicket",
+        back_populates="conversation",
+        uselist=False,  # one-to-one
         cascade="all, delete-orphan",
     )
