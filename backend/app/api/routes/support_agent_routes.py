@@ -1,0 +1,50 @@
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.api.dependencies import get_agent_service
+from app.schemas.agent_schema import AgentCreateRequest, AgentResponse, AgentStatusUpdate
+from app.services.agent_service import AgentService
+
+router = APIRouter(prefix="/api/agents", tags=["Support Agents"])
+
+
+@router.get("/", response_model=list[AgentResponse])
+def list_agents(svc: AgentService = Depends(get_agent_service)):
+    """List all human support agents and their current availability."""
+    return svc.list_agents()
+
+
+@router.post("/", response_model=AgentResponse, status_code=201)
+def create_agent(
+    body: AgentCreateRequest,
+    svc: AgentService = Depends(get_agent_service),
+):
+    """Register a new human support agent."""
+    try:
+        return svc.create_agent(body.name, body.email)
+    except Exception as exc:
+        # Catches unique constraint violation on email.
+        raise HTTPException(status_code=409, detail="Agent with this email already exists") from exc
+
+
+@router.get("/{agent_id}", response_model=AgentResponse)
+def get_agent(
+    agent_id: int,
+    svc: AgentService = Depends(get_agent_service),
+):
+    agent = svc.get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
+@router.put("/{agent_id}/status", response_model=AgentResponse)
+def update_agent_status(
+    agent_id: int,
+    body: AgentStatusUpdate,
+    svc: AgentService = Depends(get_agent_service),
+):
+    """Update an agent's availability (available / busy / offline)."""
+    agent = svc.update_status(agent_id, body.status)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
