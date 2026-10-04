@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.models.users import User
+from app.models.users import User, UserRole
 from app.schemas.user_schema import UserCreateRequest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,6 +23,8 @@ class UserService:
         user = User(
             name=user_data.name,
             email=user_data.email,
+            role=UserRole.CUSTOMER,
+            is_active=True,
             created_at=datetime.now(timezone.utc),
         )
         try:

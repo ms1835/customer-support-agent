@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.users import UserRole
+
 
 class UserCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
@@ -17,4 +19,6 @@ class UserResponse(BaseModel):
     id: int
     name: str
     email: str
+    role: UserRole
+    is_active: bool
     created_at: datetime

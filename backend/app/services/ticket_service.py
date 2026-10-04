@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.users import User
+from app.models.users import User, UserRole
 from app.models.messages import Message, MessageRole
 from app.models.support_tickets import SupportTicket, TicketPriority, TicketStatus
 
@@ -46,7 +46,7 @@ class TicketService:
         """
         ticket = self.db.get(SupportTicket, ticket_id)
         new_agent = self.db.get(User, agent_id)
-        if ticket is None or new_agent is None:
+        if ticket is None or new_agent is None or new_agent.role != UserRole.AGENT:
             return None
 
         try:
