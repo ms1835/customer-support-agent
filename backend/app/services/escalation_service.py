@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.agents import Agent, AgentStatus
+from app.models.users import AgentStatus, User, UserRole
 from app.models.conversations import Conversation, ConversationStatus
 from app.models.support_tickets import EscalationType, SupportTicket, TicketPriority, TicketStatus
 
@@ -108,9 +108,10 @@ class EscalationService:
         No-op if no available agent exists.
         """
         agent = self.db.scalar(
-            select(Agent)
-            .where(Agent.status == AgentStatus.AVAILABLE)
-            .order_by(Agent.current_ticket_count.asc())
+            select(User)
+            .where(User.role == UserRole.AGENT)
+            .where(User.agent_status == AgentStatus.AVAILABLE)
+            .order_by(User.current_ticket_count.asc())
             .limit(1)
             .with_for_update(skip_locked=True)
         )
@@ -124,6 +125,6 @@ class EscalationService:
     def _decrement_agent(self, agent_id: int | None) -> None:
         if agent_id is None:
             return
-        agent = self.db.get(Agent, agent_id)
+        agent = self.db.get(User, agent_id)
         if agent and agent.current_ticket_count > 0:
             agent.current_ticket_count -= 1

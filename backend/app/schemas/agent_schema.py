@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.agents import AgentStatus
+from app.models.users import AgentStatus
 
 
 # ---------------------------------------------------------------------------
@@ -18,18 +18,13 @@ class ResumeRequest(BaseModel):
 # Human support agent management
 # ---------------------------------------------------------------------------
 
-class AgentCreateRequest(BaseModel):
-    name: str
-    email: str
-
-
 class AgentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
     email: str
-    status: AgentStatus
+    agent_status: AgentStatus | None
     current_ticket_count: int
     created_at: datetime
 

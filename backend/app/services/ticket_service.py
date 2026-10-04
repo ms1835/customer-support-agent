@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.agents import Agent
+from app.models.users import User
 from app.models.messages import Message, MessageRole
 from app.models.support_tickets import SupportTicket, TicketPriority, TicketStatus
 
@@ -45,14 +45,14 @@ class TicketService:
         Decrements the previous agent's load counter and increments the new one.
         """
         ticket = self.db.get(SupportTicket, ticket_id)
-        new_agent = self.db.get(Agent, agent_id)
+        new_agent = self.db.get(User, agent_id)
         if ticket is None or new_agent is None:
             return None
 
         try:
             # Release previous agent's load if reassigning.
             if ticket.assigned_agent_id and ticket.assigned_agent_id != agent_id:
-                prev_agent = self.db.get(Agent, ticket.assigned_agent_id)
+                prev_agent = self.db.get(User, ticket.assigned_agent_id)
                 if prev_agent and prev_agent.current_ticket_count > 0:
                     prev_agent.current_ticket_count -= 1
 

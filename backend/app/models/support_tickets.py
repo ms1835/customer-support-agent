@@ -58,7 +58,7 @@ class SupportTicket(Base):
     )
     assigned_agent_id = Column(
         Integer,
-        ForeignKey("agents.id", ondelete="SET NULL"),
+        ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -114,5 +114,5 @@ class SupportTicket(Base):
     )
 
     conversation = relationship("Conversation", back_populates="ticket")
-    assigned_agent = relationship("Agent", back_populates="tickets")
+    assigned_agent = relationship("User", foreign_keys=[assigned_agent_id], back_populates="assigned_tickets")
     user = relationship("User", foreign_keys=[user_id])

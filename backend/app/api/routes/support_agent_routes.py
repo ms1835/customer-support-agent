@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_agent_service
-from app.schemas.agent_schema import AgentCreateRequest, AgentResponse, AgentStatusUpdate
+from app.schemas.agent_schema import AgentResponse, AgentStatusUpdate
 from app.services.agent_service import AgentService
 
 router = APIRouter(prefix="/api/agents", tags=["Support Agents"])
@@ -11,19 +11,6 @@ router = APIRouter(prefix="/api/agents", tags=["Support Agents"])
 def list_agents(svc: AgentService = Depends(get_agent_service)):
     """List all human support agents and their current availability."""
     return svc.list_agents()
-
-
-@router.post("/", response_model=AgentResponse, status_code=201)
-def create_agent(
-    body: AgentCreateRequest,
-    svc: AgentService = Depends(get_agent_service),
-):
-    """Register a new human support agent."""
-    try:
-        return svc.create_agent(body.name, body.email)
-    except Exception as exc:
-        # Catches unique constraint violation on email.
-        raise HTTPException(status_code=409, detail="Agent with this email already exists") from exc
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
