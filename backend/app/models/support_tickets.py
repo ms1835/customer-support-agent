@@ -115,4 +115,4 @@ class SupportTicket(Base):
 
     conversation = relationship("Conversation", back_populates="ticket")
     assigned_agent = relationship("Agent", back_populates="tickets")
-    user = relationship("User", foreign_keys=[id])
+    user = relationship("User", foreign_keys=[user_id])
