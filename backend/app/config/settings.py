@@ -15,6 +15,13 @@ AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_MODEL_ID = os.environ.get("AWS_LLM_MODEL", "arn:aws:bedrock:ap-south-1:055255093250:inference-profile/global.amazon.nova-2-lite-v1:0")
 
+# Auth
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "change-me-in-production-use-a-long-random-string")
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+INVITE_TOKEN_EXPIRE_HOURS = int(os.environ.get("INVITE_TOKEN_EXPIRE_HOURS", "48"))
+
 if LLM_PROVIDER == "aws":
     missing = []
     if not AWS_REGION:
