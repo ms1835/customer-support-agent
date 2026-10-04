@@ -68,12 +68,14 @@ class AuthService:
         if existing:
             raise ValueError("Email already registered")
 
+        now = datetime.now(timezone.utc)
         user = User(
             name=name,
             email=email,
             hashed_password=hash_password(password),
             role=UserRole.CUSTOMER,
             is_active=True,
+            created_at=now,
         )
         try:
             self.db.add(user)
@@ -110,6 +112,7 @@ class AuthService:
         token = secrets.token_urlsafe(32)
         expires = datetime.now(timezone.utc) + timedelta(hours=settings.INVITE_TOKEN_EXPIRE_HOURS)
 
+        now = datetime.now(timezone.utc)
         user = User(
             name=name,
             email=email,
@@ -119,6 +122,7 @@ class AuthService:
             current_ticket_count=0,
             invite_token=token,
             invite_expires_at=expires,
+            created_at=now,
         )
         try:
             self.db.add(user)

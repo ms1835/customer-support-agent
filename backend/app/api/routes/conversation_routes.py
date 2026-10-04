@@ -21,9 +21,10 @@ def _chunk_token(chunk) -> str:
             for block in content
         )
     return content or ""
-from app.api.dependencies import get_conversation_service, get_db
+from app.api.dependencies import get_conversation_service, get_current_user, get_db
 from app.models.conversations import Conversation
 from app.models.messages import Message, MessageRole
+from app.models.users import User
 from app.schemas.conversation_schema import ConversationCreateRequest, ConversationResponse
 from app.schemas.message_schema import AssistantResponse, MessageCreateRequest
 from app.services.conversation_service import ConversationService
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/api/conversations", tags=["Conversations"])
 def get_conversation(
     conversation_id: int,
     service: ConversationService = Depends(get_conversation_service),
+    _: User = Depends(get_current_user),
 ):
     conversation = service.get_conversation_by_id(conversation_id)
     if conversation is None:
@@ -45,6 +47,7 @@ def get_conversation(
 def list_conversations(
     user_id: int,
     service: ConversationService = Depends(get_conversation_service),
+    _: User = Depends(get_current_user),
 ):
     return service.list_conversations(user_id)
 
@@ -53,6 +56,7 @@ def list_conversations(
 def create_new_conversation(
     conversation_data: ConversationCreateRequest,
     service: ConversationService = Depends(get_conversation_service),
+    _: User = Depends(get_current_user),
 ):
     try:
         return service.create_conversation(conversation_data)
@@ -69,6 +73,7 @@ def create_message(
     conversation_id: int,
     message_data: MessageCreateRequest,
     service: ConversationService = Depends(get_conversation_service),
+    _: User = Depends(get_current_user),
 ):
     try:
         response = service.add_message(conversation_id, message_data)
@@ -84,6 +89,7 @@ def stream_message(
     conversation_id: int,
     message_data: MessageCreateRequest,
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ):
     """
     SSE endpoint — streams agent lifecycle events as the graph executes.

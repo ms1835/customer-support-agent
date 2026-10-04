@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import get_escalation_service, get_ticket_service
+from app.api.dependencies import get_current_user, get_escalation_service, get_ticket_service, require_customer
 from app.models.support_tickets import EscalationType
+from app.models.users import User
 from app.schemas.ticket_schema import EscalationRequest, TicketResponse
 from app.services.escalation_service import EscalationService
 from app.services.ticket_service import TicketService
@@ -14,6 +15,7 @@ def escalate_conversation(
     conversation_id: int,
     body: EscalationRequest = EscalationRequest(),
     svc: EscalationService = Depends(get_escalation_service),
+    _: User = Depends(require_customer),
 ):
     """
     Manually escalate a conversation to a human agent.
@@ -38,6 +40,7 @@ def escalate_conversation(
 def get_conversation_ticket(
     conversation_id: int,
     svc: TicketService = Depends(get_ticket_service),
+    _: User = Depends(get_current_user),
 ):
     """Fetch the support ticket associated with an escalated conversation."""
     ticket = svc.get_ticket_by_conversation(conversation_id)

@@ -7,7 +7,7 @@ from sqlalchemy import (
     Enum as SqlAlchemyEnum,
     Integer,
     String,
-    func,
+    func,  # used for updated_at onupdate
 )
 from sqlalchemy.orm import relationship
 
@@ -34,7 +34,10 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String, nullable=True)
     role = Column(
-        SqlAlchemyEnum(UserRole, name="user_role", create_constraint=False),
+        SqlAlchemyEnum(
+            UserRole, name="user_role", create_constraint=False,
+            values_callable=lambda e: [i.value for i in e],
+        ),
         nullable=False,
         default=UserRole.CUSTOMER,
         index=True,
@@ -45,13 +48,16 @@ class User(Base):
 
     # Agent-only fields (null for customers/admins)
     agent_status = Column(
-        SqlAlchemyEnum(AgentStatus, name="agent_status", create_constraint=False),
+        SqlAlchemyEnum(
+            AgentStatus, name="agent_status", create_constraint=False,
+            values_callable=lambda e: [i.value for i in e],
+        ),
         nullable=True,
         index=True,
     )
     current_ticket_count = Column(Integer, nullable=False, default=0)
 
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, index=True)
     updated_at = Column(
         DateTime(timezone=True),
         nullable=False,

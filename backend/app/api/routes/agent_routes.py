@@ -16,9 +16,10 @@ def _chunk_token(chunk) -> str:
             for block in content
         )
     return content or ""
-from app.api.dependencies import get_db
+from app.api.dependencies import get_current_user, get_db
 from app.models.conversations import Conversation
 from app.models.messages import Message, MessageRole
+from app.models.users import User
 from app.schemas.agent_schema import ResumeRequest
 from app.schemas.message_schema import AssistantResponse
 from app.services.conversation_service import ConversationService
@@ -31,6 +32,7 @@ def resume_agent(
     thread_id: str,
     body: ResumeRequest,
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ):
     """Resume a paused graph (non-streaming)."""
     service = ConversationService(db)
@@ -45,6 +47,7 @@ def stream_resume_agent(
     thread_id: str,
     body: ResumeRequest,
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ):
     """
     Resume a paused LangGraph thread with SSE streaming.

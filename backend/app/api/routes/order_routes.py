@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import (
+    get_current_user,
     get_order_service,
     get_refund_service,
     get_shipment_service,
 )
+from app.models.users import User
 from app.schemas.order_schema import OrderResponse, OrderCreateRequest, CancelOrderRequest
 from app.services.order_service import OrderService
 from app.services.refund_service import RefundService
@@ -18,6 +20,7 @@ router = APIRouter(prefix="/api/orders", tags=["Orders"])
 def get_order_shipment(
     order_id: int,
     service: ShipmentService = Depends(get_shipment_service),
+    _: User = Depends(get_current_user),
 ):
     response = service.get_shipment_by_order_id(order_id)
     if response is None:
@@ -34,6 +37,7 @@ def create_order_shipment(
     order_id: int,
     shipment_data: ShipmentCreateRequest,
     service: ShipmentService = Depends(get_shipment_service),
+    _: User = Depends(get_current_user),
 ):
     try:
         return service.create_shipment(order_id, shipment_data)
@@ -46,6 +50,7 @@ def cancel_order(
     order_id: int,
     request: CancelOrderRequest,
     service: OrderService = Depends(get_order_service),
+    _: User = Depends(get_current_user),
 ):
     try:
         response = service.cancel_order(order_id, request.reason)
@@ -60,6 +65,7 @@ def refund_order(
     order_id: int,
     request: RefundCreateRequest,
     service: RefundService = Depends(get_refund_service),
+    _: User = Depends(get_current_user),
 ):
     try:
         response = service.create_refund(order_id, request)
@@ -74,6 +80,7 @@ def refund_order(
 def create_new_order(
     order_data: OrderCreateRequest,
     service: OrderService = Depends(get_order_service),
+    _: User = Depends(get_current_user),
 ):
     try:
         order = service.create_order(order_data)
@@ -86,6 +93,7 @@ def create_new_order(
 def get_order(
     order_id: int,
     service: OrderService = Depends(get_order_service),
+    _: User = Depends(get_current_user),
 ):
     order = service.get_order_by_id(order_id)
     if order is None:

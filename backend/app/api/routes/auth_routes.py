@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_db, require_admin
 from app.config import settings
 from app.schemas.auth_schema import (
     AcceptInviteRequest,
@@ -20,7 +20,7 @@ from app.services.auth_service import (
     decode_token,
 )
 from app.models.users import User
-from jose import JWTError
+from jose import JWTError  # noqa: F401 (used indirectly via decode_token)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -117,11 +117,12 @@ def accept_invite(body: AcceptInviteRequest, response: Response, db: Session = D
 
 
 @router.post("/invite", response_model=InviteResponse, status_code=201)
-def create_invite(body: InviteCreateRequest, db: Session = Depends(get_db)):
-    """
-    Admin-only: create an agent invite.
-    (Auth guard will be wired in Step 5 once get_current_user exists.)
-    """
+def create_invite(
+    body: InviteCreateRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Admin-only: create an agent invite."""
     svc = AuthService(db)
     try:
         user = svc.create_agent_invite(body.name, body.email)
