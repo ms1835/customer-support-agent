@@ -1,0 +1,1 @@
+[Ticket #{{ticket_id}}] {{priority}} priority escalation raised

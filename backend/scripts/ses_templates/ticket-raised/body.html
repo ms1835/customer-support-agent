@@ -1,0 +1,17 @@
+<html>
+<body>
+  <p>A new support ticket has been raised.</p>
+  <table>
+    <tr><td><b>Ticket</b></td><td>#{{ticket_id}}</td></tr>
+    <tr><td><b>Priority</b></td><td>{{priority}}</td></tr>
+    <tr><td><b>Status</b></td><td>{{status}}</td></tr>
+    <tr><td><b>Escalation type</b></td><td>{{escalation_type}}</td></tr>
+    <tr><td><b>Customer</b></td><td>{{customer_name}} &lt;{{customer_email}}&gt;</td></tr>
+    <tr><td><b>Conversation ID</b></td><td>{{conversation_id}}</td></tr>
+    <tr><td><b>Assigned agent</b></td><td>{{assigned_agent}}</td></tr>
+    <tr><td><b>Reason</b></td><td>{{reason}}</td></tr>
+    <tr><td><b>Raised at</b></td><td>{{created_at}}</td></tr>
+  </table>
+  {{#if dashboard_url}}<p><a href="{{dashboard_url}}">Open dashboard</a></p>{{/if}}
+</body>
+</html>

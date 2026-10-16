@@ -1,0 +1,12 @@
+A new support ticket has been raised.
+
+Ticket: #{{ticket_id}}
+Priority: {{priority}}
+Status: {{status}}
+Escalation type: {{escalation_type}}
+Customer: {{customer_name}} <{{customer_email}}>
+Conversation ID: {{conversation_id}}
+Assigned agent: {{assigned_agent}}
+Reason: {{reason}}
+Raised at: {{created_at}}
+{{#if dashboard_url}}Dashboard: {{dashboard_url}}{{/if}}
