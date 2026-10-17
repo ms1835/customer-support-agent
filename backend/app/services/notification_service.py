@@ -23,7 +23,7 @@ class NotificationService:
 
     @staticmethod
     def _enabled() -> bool:
-        return bool(settings.SES_SENDER_EMAIL and settings.SUPPORT_TEAM_EMAILS and settings.SES_REGION)
+        return bool(settings.SES_SENDER_EMAIL and settings.SUPPORT_TEAM_EMAILS and settings.AWS_REGION)
 
     @classmethod
     def notify_ticket_created(cls, ticket: SupportTicket) -> None:
@@ -62,7 +62,7 @@ class NotificationService:
     @classmethod
     def _send(cls, template_data: dict) -> None:
         try:
-            client_kwargs = {"region_name": settings.SES_REGION}
+            client_kwargs = {"region_name": settings.AWS_REGION}
             if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
                 client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
                 client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
