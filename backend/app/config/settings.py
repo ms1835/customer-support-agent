@@ -15,6 +15,14 @@ AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_MODEL_ID = os.environ.get("AWS_LLM_MODEL", "arn:aws:bedrock:ap-south-1:055255093250:inference-profile/global.amazon.nova-2-lite-v1:0")
 
+# Escalation email notifications (AWS SES). Disabled unless sender + recipients are set.
+SES_SENDER_EMAIL = os.environ.get("SES_SENDER_EMAIL")
+SES_TEMPLATE_NAME = os.environ.get("SES_TEMPLATE_NAME", "ticket-raised")
+SUPPORT_TEAM_EMAILS = [
+    e.strip() for e in os.environ.get("SUPPORT_TEAM_EMAILS", "").split(",") if e.strip()
+]
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
+
 # Auth
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "change-me-in-production-use-a-long-random-string")
 JWT_ALGORITHM = "HS256"

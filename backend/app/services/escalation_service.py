@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.users import AgentStatus, User, UserRole
 from app.models.conversations import Conversation, ConversationStatus
 from app.models.support_tickets import EscalationType, SupportTicket, TicketPriority, TicketStatus
+from app.services.notification_service import NotificationService
 
 
 class EscalationService:
@@ -58,10 +59,13 @@ class EscalationService:
 
             self.db.commit()
             self.db.refresh(ticket)
-            return ticket
         except Exception:
             self.db.rollback()
             raise
+
+        # After commit so no email is sent for a rolled-back ticket.
+        NotificationService.notify_ticket_created(ticket)
+        return ticket
 
     def resolve_ticket(
         self,
