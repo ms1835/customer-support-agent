@@ -1,6 +1,7 @@
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Enum as SqlAlchemyEnum, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -13,6 +14,14 @@ class OrderStatus(str, Enum):
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     REFUNDED = "refunded"
+
+
+class PaymentMethod(str, Enum):
+    CREDIT_CARD = "credit card"
+    DEBIT_CARD = "debit card"
+    UPI = "upi"
+    NET_BANKING = "net banking"
+    COD = "cod"
 
 
 class Order(Base):
@@ -31,6 +40,8 @@ class Order(Base):
         nullable=False,
         default=OrderStatus.PENDING,
     )
+    payment_method = Column(String(50), nullable=False, index=True)
+    shipping_address = Column(JSONB, nullable=False)
     total_amount = Column(Numeric(precision=10, scale=2), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
     updated_at = Column(

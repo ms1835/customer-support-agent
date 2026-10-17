@@ -29,10 +29,12 @@ def get_order_details(db: Session, order_number: str) -> dict | None:
         "order_number": order.id,
         "status": order.status.value,
         "total_amount": str(order.total_amount),
+        "payment_method": order.payment_method,
+        "shipping_address": order.shipping_address,
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "items": [
             {
-                "product_id": item.product_id,
+                "product_code": item.product_code,
                 "product_name": item.product.name if item.product else None,
                 "quantity": item.quantity,
                 "unit_price": str(item.unit_price),
